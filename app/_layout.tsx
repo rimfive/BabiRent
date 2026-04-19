@@ -29,6 +29,7 @@ export default function RootLayout() {
         <Stack.Screen name="vehicule/publier" />
         <Stack.Screen name="vehicule/modifier" />
         <Stack.Screen name="logement/publier" />
+        <Stack.Screen name="logement/modifier" />
         <Stack.Screen name="reservation/[id]" />
         <Stack.Screen name="mes-vehicules" />
         <Stack.Screen name="mes-logements" />

@@ -57,6 +57,7 @@ export default function HomeScreen() {
   const [filtreActif, setFiltreActif] = useState('Tous');
   const [chargement, setChargement] = useState(true);
   const [rafraichissement, setRafraichissement] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
 
   const charger = async (silencieux = false) => {
     if (!silencieux) setChargement(true);
@@ -97,15 +98,42 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.conteneur} edges={['top']}>
+
+      {/* ── Menu latéral (dropdown) ── */}
+      {menuVisible && (
+        <>
+          <Pressable style={styles.menuOverlay} onPress={() => setMenuVisible(false)} />
+          <View style={styles.menuDropdown}>
+            {[
+              { icone: 'car-outline' as const,       label: 'Mes véhicules',    route: '/mes-vehicules' },
+              { icone: 'home-outline' as const,       label: 'Mes logements',    route: '/mes-logements' },
+              { icone: 'calendar-outline' as const,   label: 'Mes réservations', route: '/mes-reservations' },
+              { icone: 'person-outline' as const,     label: 'Mon profil',       route: '/(tabs)/profile' },
+              { icone: 'settings-outline' as const,   label: 'Paramètres',       route: '/(tabs)/profile' },
+            ].map(item => (
+              <Pressable
+                key={item.label}
+                style={styles.menuItem}
+                onPress={() => { setMenuVisible(false); router.push(item.route as any); }}
+              >
+                <Ionicons name={item.icone} size={18} color={Colors.accent} />
+                <Text style={styles.menuItemTxt}>{item.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </>
+      )}
+
       {/* ── Header ── */}
       <View style={styles.header}>
-        <Pressable style={styles.iconeBtn}>
+        <Pressable style={styles.iconeBtn} onPress={() => setMenuVisible(v => !v)} hitSlop={8}>
           <Ionicons name="menu-outline" size={22} color={Colors.white} />
         </Pressable>
         <Logo />
         <Pressable
           style={styles.iconeBtn}
           onPress={() => router.push('/(tabs)/profile')}
+          hitSlop={8}
         >
           <View style={styles.avatar}>
             <Text style={styles.avatarTxt}>
@@ -176,12 +204,15 @@ export default function HomeScreen() {
         ))}
       </ScrollView>
 
-      {/* ── Liste ── */}
+      {/* ── Liste — flex:1 pour ne pas déborder sur les filtres ── */}
       {chargement ? (
-        <ActivityIndicator size="large" color={Colors.accent} style={styles.loader} />
+        <View style={styles.loaderBox}>
+          <ActivityIndicator size="large" color={Colors.accent} />
+        </View>
       ) : section === 'vehicules' ? (
         <FlatList
           key="vehicules"
+          style={styles.flatlist}
           data={vehiculesFiltres}
           keyExtractor={v => v.id}
           renderItem={({ item }) => <CarteVehicule vehicule={item} />}
@@ -207,6 +238,7 @@ export default function HomeScreen() {
       ) : (
         <FlatList
           key="logements"
+          style={styles.flatlist}
           data={logementsFiltres}
           keyExtractor={l => l.id}
           renderItem={({ item }) => <CarteLogement logement={item} />}
@@ -320,13 +352,31 @@ const styles = StyleSheet.create({
   filtreTxt: { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.55)' },
   filtreTxtActif: { color: Colors.white },
 
+  // Menu dropdown
+  menuOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    zIndex: 98,
+  },
+  menuDropdown: {
+    position: 'absolute', top: 60, left: 12,
+    zIndex: 99,
+    backgroundColor: Colors.card, borderRadius: 16,
+    paddingVertical: 6, minWidth: 220,
+    borderWidth: 1, borderColor: Colors.border,
+    shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 20, elevation: 12,
+  },
+  menuItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 18, paddingVertical: 14,
+  },
+  menuItemTxt: { fontSize: 15, fontWeight: '600', color: Colors.textPrimary },
+
   // Liste
-  loader: { marginTop: 60 },
+  flatlist: { flex: 1 },
+  loaderBox: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   liste: { paddingTop: 4, paddingBottom: 100 },
   grille: { paddingHorizontal: 16, gap: 12 },
-  vide: {
-    alignItems: 'center', paddingTop: 60, gap: 14,
-  },
+  vide: { alignItems: 'center', paddingTop: 60, gap: 14 },
   txVide: { fontSize: 15, color: Colors.textSecondary },
   lienVide: { color: Colors.accent, fontWeight: '700', fontSize: 15 },
 });

@@ -138,7 +138,7 @@ export default function MesVehiculesScreen() {
       <View style={styles.header}>
         <Pressable
           style={styles.headerBtn}
-          onPress={() => { try { router.back(); } catch { router.replace('/(tabs)/profile'); } }}
+          onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/profile')}
           hitSlop={16}
         >
           <Ionicons name="arrow-back" size={22} color={Colors.white} />

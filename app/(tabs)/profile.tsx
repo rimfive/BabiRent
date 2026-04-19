@@ -77,8 +77,18 @@ export default function ProfileScreen() {
     <SafeAreaView style={styles.page}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
 
-        {/* ── Titre ── */}
-        <Text style={styles.titrePage}>Mon Profil</Text>
+        {/* ── Header avec retour ── */}
+        <View style={styles.headerRow}>
+          <Pressable
+            style={styles.retourBtn}
+            onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)')}
+            hitSlop={12}
+          >
+            <Ionicons name="arrow-back" size={22} color={Colors.white} />
+          </Pressable>
+          <Text style={styles.titrePage}>Mon Profil</Text>
+          <View style={styles.retourBtn} />
+        </View>
 
         {/* ══ CARTE PROFIL ══ */}
         <View style={styles.carteProfil}>
@@ -159,9 +169,17 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: Colors.background },
   scroll: { paddingBottom: 40 },
+  headerRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 8, paddingVertical: 6, marginBottom: 12,
+  },
+  retourBtn: {
+    width: 44, height: 44, borderRadius: 22,
+    alignItems: 'center', justifyContent: 'center',
+  },
   titrePage: {
-    fontSize: 26, fontWeight: '900', color: Colors.white,
-    paddingHorizontal: 20, marginTop: 8, marginBottom: 20,
+    flex: 1, textAlign: 'center',
+    fontSize: 22, fontWeight: '900', color: Colors.white,
   },
 
   // ── Carte profil ──

@@ -20,8 +20,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../src/config/colors';
 import { getVehicule } from '../../src/services/vehicule.service';
+import { getProfilUtilisateur } from '../../src/services/auth.service';
 import { useAuthStore } from '../../src/store/useAuthStore';
-import { Vehicule } from '../../src/types';
+import { Vehicule, Utilisateur } from '../../src/types';
 import { formatPrix, formatNote } from '../../src/utils/formatters';
 
 const { width } = Dimensions.get('window');
@@ -65,17 +66,20 @@ export default function DetailVehiculeScreen() {
   const router = useRouter();
   const { utilisateur } = useAuthStore();
 
-  const [vehicule, setVehicule]       = useState<Vehicule | null>(null);
-  const [chargement, setChargement]   = useState(true);
-  const [photoIndex, setPhotoIndex]   = useState(0);
-  const [descEtendue, setDescEtendue] = useState(false);
+  const [vehicule, setVehicule]         = useState<Vehicule | null>(null);
+  const [proprietaire, setProprietaire] = useState<Utilisateur | null>(null);
+  const [chargement, setChargement]     = useState(true);
+  const [photoIndex, setPhotoIndex]     = useState(0);
+  const [descEtendue, setDescEtendue]   = useState(false);
 
   // ── Chargement depuis Firestore ──────────────────────────────────────────
   useEffect(() => {
     if (!id) return;
     getVehicule(id)
-      .then(setVehicule)
-      .catch(() => Alert.alert('Erreur', 'Véhicule introuvable.'))
+      .then(v => { setVehicule(v); return v; })
+      .then(v => getProfilUtilisateur(v.proprietaireId))
+      .then(setProprietaire)
+      .catch(() => {})
       .finally(() => setChargement(false));
   }, [id]);
 
@@ -266,15 +270,15 @@ export default function DetailVehiculeScreen() {
             {/* Infos */}
             <View style={{ flex: 1 }}>
               <Text style={styles.propNom}>
-                {vehicule.proprietaire
-                  ? `${vehicule.proprietaire.prenom} ${vehicule.proprietaire.nom}`
+                {proprietaire
+                  ? `${proprietaire.prenom} ${proprietaire.nom}`
                   : 'Propriétaire'}
               </Text>
               <View style={styles.propMeta}>
                 <Ionicons name="star" size={12} color="#FBBF24" />
                 <Text style={styles.propNote}>4.8</Text>
                 <Text style={styles.propVille}>
-                  · {vehicule.proprietaire?.ville || vehicule.ville}
+                  · {proprietaire?.ville || vehicule.ville}
                 </Text>
               </View>
             </View>

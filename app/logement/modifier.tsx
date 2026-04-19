@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// BABI RENT — Modifier une annonce véhicule
+// BABI RENT — Modifier une annonce logement
 // ══════════════════════════════════════════════════════════════════════════════
 
 import React, { useEffect, useState } from 'react';
@@ -12,9 +12,14 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../src/config/colors';
-import { getVehicule, mettreAJourVehicule } from '../../src/services/vehicule.service';
+import { getLogement, mettreAJourLogement } from '../../src/services/logement.service';
 import { useAuthStore } from '../../src/store/useAuthStore';
-import { VILLES, MARQUES_VEHICULE, TYPES_VEHICULE } from '../../src/config/constantes';
+import { VILLES, TYPES_LOGEMENT } from '../../src/config/constantes';
+
+const EQUIPEMENTS_DISPOS = [
+  'WiFi', 'Climatisation', 'Parking', 'Piscine', 'Cuisine',
+  'TV', 'Sécurité', 'Eau chaude', 'Groupe électrogène', 'Terrasse', 'Jardin', 'Gardien',
+];
 
 // ── Champ texte dark ──────────────────────────────────────────────────────────
 function Champ({ label, icone, ...props }: any) {
@@ -41,7 +46,7 @@ const f = StyleSheet.create({
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-export default function ModifierVehiculeScreen() {
+export default function ModifierLogementScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { utilisateur } = useAuthStore();
@@ -51,50 +56,50 @@ export default function ModifierVehiculeScreen() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [succes, setSucces] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
+  const [equipements, setEquipements] = useState<string[]>([]);
 
   const [form, setForm] = useState({
-    marque: 'Toyota', modele: '',
-    annee: new Date().getFullYear().toString(),
-    type: 'Berline', prixJour: '', caution: '',
+    titre: '', type: 'Appartement',
+    prixJour: '', prixMois: '', caution: '',
     ville: 'Abidjan', adresse: '',
-    transmission: 'manuelle' as 'manuelle' | 'automatique',
-    carburant: 'essence' as 'essence' | 'diesel' | 'electrique' | 'hybride',
-    nombrePlaces: '5',
-    climatisation: true, chauffeurDisponible: false,
-    description: '',
+    nombreChambres: '2', nombreSDB: '1',
+    superficie: '', capacitePersonnes: '4',
+    meuble: true, description: '',
     disponible: true,
   });
 
   const maj = (champ: string) => (val: string) => setForm(p => ({ ...p, [champ]: val }));
+  const toggleEquip = (eq: string) =>
+    setEquipements(p => p.includes(eq) ? p.filter(e => e !== eq) : [...p, eq]);
 
-  // ── Charger les données existantes du véhicule ──────────────────────────
+  // ── Charger les données existantes ──────────────────────────────────────
   useEffect(() => {
     if (!id) return;
-    chargerVehicule();
+    chargerLogement();
   }, [id]);
 
-  const chargerVehicule = async () => {
+  const chargerLogement = async () => {
     setChargement(true);
     try {
-      const v = await getVehicule(id as string);
-      if (!v) { setErreur('Véhicule introuvable.'); return; }
-      setPhotos(v.photos ?? []);
+      const l = await getLogement(id as string);
+      if (!l) { setErreur('Logement introuvable.'); return; }
+      setPhotos(l.photos ?? []);
+      setEquipements(l.equipements ?? []);
       setForm({
-        marque: v.marque,
-        modele: v.modele,
-        annee: String(v.annee),
-        type: v.type,
-        prixJour: String(v.prixJour),
-        caution: String(v.caution ?? ''),
-        ville: v.ville,
-        adresse: v.adresse ?? '',
-        transmission: v.transmission,
-        carburant: v.carburant,
-        nombrePlaces: String(v.nombrePlaces),
-        climatisation: v.climatisation,
-        chauffeurDisponible: v.chauffeurDisponible,
-        description: v.description ?? '',
-        disponible: v.disponible,
+        titre: l.titre,
+        type: l.type,
+        prixJour: String(l.prixJour),
+        prixMois: l.prixMois && l.prixMois > 0 ? String(l.prixMois) : '',
+        caution: l.caution && l.caution > 0 ? String(l.caution) : '',
+        ville: l.ville,
+        adresse: l.adresse ?? '',
+        nombreChambres: String(l.nombreChambres),
+        nombreSDB: String(l.nombreSDB),
+        superficie: l.superficie > 0 ? String(l.superficie) : '',
+        capacitePersonnes: String(l.capacitePersonnes),
+        meuble: l.meuble,
+        description: l.description ?? '',
+        disponible: l.disponible,
       });
     } catch (e) {
       setErreur(e instanceof Error ? e.message : String(e));
@@ -117,40 +122,40 @@ export default function ModifierVehiculeScreen() {
   const sauvegarder = async () => {
     if (!utilisateur || !id) return;
     setErreur(null);
-    if (!form.modele.trim()) { setErreur('Le modèle est obligatoire.'); return; }
-    if (!form.prixJour || parseFloat(form.prixJour) <= 0) { setErreur('Prix par jour invalide.'); return; }
+    if (!form.titre.trim()) { setErreur('Le titre est obligatoire.'); return; }
+    if (!form.prixJour || parseFloat(form.prixJour) <= 0) { setErreur('Prix par nuit invalide.'); return; }
+    if (!form.adresse.trim()) { setErreur("L'adresse est obligatoire."); return; }
 
     setSaving(true);
     try {
-      await mettreAJourVehicule(id as string, {
-        marque: form.marque,
-        modele: form.modele.trim(),
-        annee: parseInt(form.annee) || new Date().getFullYear(),
+      await mettreAJourLogement(id as string, {
+        titre: form.titre.trim(),
         type: form.type,
         photos: photos.length > 0 ? photos : undefined,
         prixJour: parseFloat(form.prixJour),
+        prixMois: form.prixMois ? parseFloat(form.prixMois) : 0,
         caution: parseFloat(form.caution) || 0,
         ville: form.ville,
-        adresse: form.adresse,
-        disponible: form.disponible,
-        transmission: form.transmission,
-        carburant: form.carburant,
-        nombrePlaces: parseInt(form.nombrePlaces) || 5,
-        climatisation: form.climatisation,
-        chauffeurDisponible: form.chauffeurDisponible,
+        adresse: form.adresse.trim(),
+        nombreChambres: parseInt(form.nombreChambres) || 1,
+        nombreSDB: parseInt(form.nombreSDB) || 1,
+        superficie: parseFloat(form.superficie) || 0,
+        capacitePersonnes: parseInt(form.capacitePersonnes) || 1,
+        meuble: form.meuble,
+        equipements,
         description: form.description.trim(),
+        disponible: form.disponible,
       });
       setSucces(true);
-      setTimeout(() => router.replace('/mes-vehicules'), 1200);
+      setTimeout(() => router.replace('/mes-logements'), 1200);
     } catch (e) {
-      console.error('Erreur modification:', e);
       setErreur(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
   };
 
-  const retour = () => router.canGoBack() ? router.back() : router.replace('/mes-vehicules');
+  const retour = () => router.canGoBack() ? router.back() : router.replace('/mes-logements');
 
   // ── Écran de chargement ──────────────────────────────────────────────────
   if (chargement) {
@@ -160,7 +165,7 @@ export default function ModifierVehiculeScreen() {
           <Pressable style={styles.headerBtn} onPress={retour} hitSlop={16}>
             <Ionicons name="arrow-back" size={22} color={Colors.white} />
           </Pressable>
-          <Text style={styles.headerTitre}>Modifier le véhicule</Text>
+          <Text style={styles.headerTitre}>Modifier le logement</Text>
           <View style={styles.headerBtn} />
         </View>
         <View style={styles.centre}>
@@ -179,7 +184,7 @@ export default function ModifierVehiculeScreen() {
         <Pressable style={styles.headerBtn} onPress={retour} hitSlop={16}>
           <Ionicons name="arrow-back" size={22} color={Colors.white} />
         </Pressable>
-        <Text style={styles.headerTitre}>Modifier le véhicule</Text>
+        <Text style={styles.headerTitre}>Modifier le logement</Text>
         <View style={styles.headerBtn} />
       </View>
 
@@ -265,32 +270,39 @@ export default function ModifierVehiculeScreen() {
               <Text style={styles.sectionTitre}>Informations</Text>
             </View>
 
-            <Text style={styles.labelSelect}>Marque</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-              {MARQUES_VEHICULE.slice(0, 10).map(m => (
-                <Pressable key={m} style={[styles.pill, form.marque === m && styles.pillActif]} onPress={() => maj('marque')(m)}>
-                  <Text style={[styles.pillTxt, form.marque === m && styles.pillTxtActif]}>{m}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
+            <Champ label="Titre de l'annonce *" value={form.titre} onChangeText={maj('titre')} placeholder="ex: Appartement moderne au Plateau" icone="home-outline" />
 
-            <View style={styles.rangee}>
-              <View style={{ flex: 2 }}>
-                <Champ label="Modèle *" value={form.modele} onChangeText={maj('modele')} placeholder="ex: Corolla" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Champ label="Année" value={form.annee} onChangeText={maj('annee')} keyboardType="numeric" />
-              </View>
-            </View>
-
-            <Text style={styles.labelSelect}>Type</Text>
+            <Text style={styles.labelSelect}>Type de logement</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-              {TYPES_VEHICULE.map(t => (
+              {TYPES_LOGEMENT.map(t => (
                 <Pressable key={t} style={[styles.pill, form.type === t && styles.pillActif]} onPress={() => maj('type')(t)}>
                   <Text style={[styles.pillTxt, form.type === t && styles.pillTxtActif]}>{t}</Text>
                 </Pressable>
               ))}
             </ScrollView>
+
+            <View style={styles.rangee}>
+              <View style={{ flex: 1 }}>
+                <Champ label="Chambres" value={form.nombreChambres} onChangeText={maj('nombreChambres')} keyboardType="numeric" icone="bed-outline" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Champ label="Salles de bain" value={form.nombreSDB} onChangeText={maj('nombreSDB')} keyboardType="numeric" icone="water-outline" />
+              </View>
+            </View>
+
+            <View style={styles.rangee}>
+              <View style={{ flex: 1 }}>
+                <Champ label="Superficie (m²)" value={form.superficie} onChangeText={maj('superficie')} keyboardType="numeric" icone="expand-outline" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Champ label="Capacité (pers.)" value={form.capacitePersonnes} onChangeText={maj('capacitePersonnes')} keyboardType="numeric" icone="people-outline" />
+              </View>
+            </View>
+
+            <View style={[styles.switchRow, { borderTopWidth: 0, paddingTop: 0 }]}>
+              <View><Text style={styles.switchLabel}>Meublé</Text></View>
+              <Switch value={form.meuble} onValueChange={v => setForm(p => ({ ...p, meuble: v }))} trackColor={{ true: Colors.accent, false: Colors.border }} thumbColor={Colors.white} />
+            </View>
           </View>
 
           {/* ══ SECTION — Prix & Localisation ══ */}
@@ -299,14 +311,17 @@ export default function ModifierVehiculeScreen() {
               <View style={styles.num}><Text style={styles.numTxt}>3</Text></View>
               <Text style={styles.sectionTitre}>Prix & Localisation</Text>
             </View>
+
             <View style={styles.rangee}>
               <View style={{ flex: 1 }}>
-                <Champ label="Prix/jour (FCFA) *" value={form.prixJour} onChangeText={maj('prixJour')} keyboardType="numeric" icone="cash-outline" />
+                <Champ label="Prix/nuit (FCFA) *" value={form.prixJour} onChangeText={maj('prixJour')} keyboardType="numeric" icone="cash-outline" />
               </View>
               <View style={{ flex: 1 }}>
-                <Champ label="Caution (FCFA)" value={form.caution} onChangeText={maj('caution')} keyboardType="numeric" icone="shield-outline" />
+                <Champ label="Prix/mois (FCFA)" value={form.prixMois} onChangeText={maj('prixMois')} keyboardType="numeric" icone="calendar-outline" />
               </View>
             </View>
+
+            <Champ label="Caution (FCFA)" value={form.caution} onChangeText={maj('caution')} keyboardType="numeric" icone="shield-outline" />
 
             <Text style={styles.labelSelect}>Ville</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
@@ -316,43 +331,29 @@ export default function ModifierVehiculeScreen() {
                 </Pressable>
               ))}
             </ScrollView>
-            <Champ label="Adresse" value={form.adresse} onChangeText={maj('adresse')} icone="location-outline" />
+
+            <Champ label="Adresse *" value={form.adresse} onChangeText={maj('adresse')} placeholder="Quartier, rue..." icone="location-outline" />
           </View>
 
-          {/* ══ SECTION — Options ══ */}
+          {/* ══ SECTION — Équipements ══ */}
           <View style={styles.section}>
             <View style={styles.sectionHead}>
               <View style={styles.num}><Text style={styles.numTxt}>4</Text></View>
-              <Text style={styles.sectionTitre}>Options</Text>
+              <Text style={styles.sectionTitre}>Équipements</Text>
             </View>
-
-            <Text style={styles.labelSelect}>Transmission</Text>
-            <View style={styles.toggleRow}>
-              {(['manuelle', 'automatique'] as const).map(t => (
-                <Pressable key={t} style={[styles.toggleBtn, form.transmission === t && styles.toggleActif]} onPress={() => setForm(p => ({ ...p, transmission: t }))}>
-                  <Text style={[styles.toggleTxt, form.transmission === t && styles.toggleTxtActif]}>{t.charAt(0).toUpperCase() + t.slice(1)}</Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <Text style={styles.labelSelect}>Carburant</Text>
-            <View style={styles.toggleRow}>
-              {(['essence', 'diesel', 'electrique', 'hybride'] as const).map(c => (
-                <Pressable key={c} style={[styles.toggleBtn, form.carburant === c && styles.toggleActif]} onPress={() => setForm(p => ({ ...p, carburant: c }))}>
-                  <Text style={[styles.toggleTxt, form.carburant === c && styles.toggleTxtActif]}>{c.charAt(0).toUpperCase() + c.slice(1)}</Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <Champ label="Nombre de places" value={form.nombrePlaces} onChangeText={maj('nombrePlaces')} keyboardType="numeric" icone="people-outline" />
-
-            <View style={styles.switchRow}>
-              <View><Text style={styles.switchLabel}>Climatisation</Text></View>
-              <Switch value={form.climatisation} onValueChange={v => setForm(p => ({ ...p, climatisation: v }))} trackColor={{ true: Colors.accent, false: Colors.border }} thumbColor={Colors.white} />
-            </View>
-            <View style={[styles.switchRow, { borderBottomWidth: 0 }]}>
-              <View><Text style={styles.switchLabel}>Chauffeur disponible</Text></View>
-              <Switch value={form.chauffeurDisponible} onValueChange={v => setForm(p => ({ ...p, chauffeurDisponible: v }))} trackColor={{ true: Colors.accent, false: Colors.border }} thumbColor={Colors.white} />
+            <View style={styles.equipGrid}>
+              {EQUIPEMENTS_DISPOS.map(eq => {
+                const actif = equipements.includes(eq);
+                return (
+                  <Pressable
+                    key={eq}
+                    style={[styles.equipPill, actif && styles.equipPillActif]}
+                    onPress={() => toggleEquip(eq)}
+                  >
+                    <Text style={[styles.equipTxt, actif && styles.equipTxtActif]}>{eq}</Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
 
@@ -365,7 +366,7 @@ export default function ModifierVehiculeScreen() {
             <View style={[f.champ, { alignItems: 'flex-start', minHeight: 100 }]}>
               <TextInput
                 style={[f.input, { textAlignVertical: 'top', paddingTop: 4 }]}
-                placeholder="Description du véhicule..."
+                placeholder="Description du logement..."
                 placeholderTextColor={Colors.textLight}
                 value={form.description}
                 onChangeText={maj('description')}
@@ -442,15 +443,15 @@ const styles = StyleSheet.create({
 
   rangee: { flexDirection: 'row', gap: 10 },
 
-  toggleRow: { flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
-  toggleBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: Colors.glass, borderWidth: 1.5, borderColor: Colors.border },
-  toggleActif: { backgroundColor: Colors.accent, borderColor: Colors.accent },
-  toggleTxt: { fontSize: 13, color: Colors.textSecondary, fontWeight: '600' },
-  toggleTxtActif: { color: Colors.white, fontWeight: '700' },
-
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderTopWidth: 1, borderColor: Colors.border },
   switchLabel: { fontSize: 15, fontWeight: '600', color: Colors.white },
   switchSous: { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
+
+  equipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  equipPill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 50, backgroundColor: Colors.glass, borderWidth: 1.5, borderColor: Colors.border },
+  equipPillActif: { backgroundColor: Colors.accent, borderColor: Colors.accent },
+  equipTxt: { fontSize: 13, color: Colors.textSecondary, fontWeight: '600' },
+  equipTxtActif: { color: Colors.white, fontWeight: '700' },
 
   photoThumb: { width: 90, height: 90, borderRadius: 12, marginRight: 10, backgroundColor: Colors.glass, overflow: 'hidden' },
   photoClose: { position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },

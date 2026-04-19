@@ -11,8 +11,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../src/config/colors';
 import { getLogement } from '../../src/services/logement.service';
+import { getProfilUtilisateur } from '../../src/services/auth.service';
 import { useAuthStore } from '../../src/store/useAuthStore';
-import { Logement } from '../../src/types';
+import { Logement, Utilisateur } from '../../src/types';
 import { formatPrix, formatNote } from '../../src/utils/formatters';
 
 const { width } = Dimensions.get('window');
@@ -69,16 +70,19 @@ export default function DetailLogementScreen() {
   const router = useRouter();
   const { utilisateur } = useAuthStore();
 
-  const [logement, setLogement]       = useState<Logement | null>(null);
-  const [chargement, setChargement]   = useState(true);
-  const [photoIndex, setPhotoIndex]   = useState(0);
-  const [descEtendue, setDescEtendue] = useState(false);
+  const [logement, setLogement]         = useState<Logement | null>(null);
+  const [proprietaire, setProprietaire] = useState<Utilisateur | null>(null);
+  const [chargement, setChargement]     = useState(true);
+  const [photoIndex, setPhotoIndex]     = useState(0);
+  const [descEtendue, setDescEtendue]   = useState(false);
 
   useEffect(() => {
     if (!id) return;
     getLogement(id)
-      .then(setLogement)
-      .catch(() => Alert.alert('Erreur', 'Logement introuvable.'))
+      .then(l => { setLogement(l); return l; })
+      .then(l => getProfilUtilisateur(l.proprietaireId))
+      .then(setProprietaire)
+      .catch(() => {})
       .finally(() => setChargement(false));
   }, [id]);
 
@@ -269,14 +273,14 @@ export default function DetailLogementScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.propNom}>
-                {logement.proprietaire
-                  ? `${logement.proprietaire.prenom} ${logement.proprietaire.nom}`
+                {proprietaire
+                  ? `${proprietaire.prenom} ${proprietaire.nom}`
                   : 'Propriétaire'}
               </Text>
               <View style={styles.propMeta}>
                 <Ionicons name="star" size={12} color="#FBBF24" />
                 <Text style={styles.propNote}>4.9</Text>
-                <Text style={styles.propVille}>· {logement.proprietaire?.ville || logement.ville}</Text>
+                <Text style={styles.propVille}>· {proprietaire?.ville || logement.ville}</Text>
               </View>
             </View>
             {!isProprietaire && (

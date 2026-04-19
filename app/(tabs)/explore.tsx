@@ -1,3 +1,7 @@
+// ══════════════════════════════════════════════════════════════════════════════
+// BABI RENT — Explorer (recherche + filtres)
+// ══════════════════════════════════════════════════════════════════════════════
+
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable,
@@ -40,26 +44,37 @@ export default function ExploreScreen() {
   }, [villeFiltre]);
 
   const donnees = section === 'vehicules'
-    ? vehicules.filter(v => !recherche || v.marque.toLowerCase().includes(recherche.toLowerCase()) || v.ville.toLowerCase().includes(recherche.toLowerCase()))
-    : logements.filter(l => !recherche || l.titre.toLowerCase().includes(recherche.toLowerCase()) || l.ville.toLowerCase().includes(recherche.toLowerCase()));
+    ? vehicules.filter(v => !recherche ||
+        v.marque?.toLowerCase().includes(recherche.toLowerCase()) ||
+        v.ville?.toLowerCase().includes(recherche.toLowerCase()))
+    : logements.filter(l => !recherche ||
+        l.titre?.toLowerCase().includes(recherche.toLowerCase()) ||
+        l.ville?.toLowerCase().includes(recherche.toLowerCase()));
 
   return (
-    <SafeAreaView style={styles.conteneur}>
+    <SafeAreaView style={styles.page} edges={['top']}>
+
+      {/* ── Titre ── */}
       <Text style={styles.titre}>Explorer</Text>
 
-      {/* Recherche */}
+      {/* ── Barre de recherche dark ── */}
       <View style={styles.barreRecherche}>
-        <Ionicons name="search" size={18} color={Colors.gray400} />
+        <Ionicons name="search-outline" size={18} color={Colors.accent} />
         <TextInput
           style={styles.input}
-          placeholder="Rechercher..."
-          placeholderTextColor={Colors.gray400}
+          placeholder="Rechercher un véhicule ou logement..."
+          placeholderTextColor={Colors.textLight}
           value={recherche}
           onChangeText={setRecherche}
         />
+        {recherche.length > 0 && (
+          <Pressable onPress={() => setRecherche('')} hitSlop={8}>
+            <Ionicons name="close-circle" size={18} color={Colors.textLight} />
+          </Pressable>
+        )}
       </View>
 
-      {/* Toggle section */}
+      {/* ── Toggle Véhicules / Logements ── */}
       <View style={styles.toggle}>
         {(['vehicules', 'logements'] as SectionType[]).map(s => (
           <Pressable
@@ -67,7 +82,11 @@ export default function ExploreScreen() {
             style={[styles.toggleBtn, section === s && styles.toggleActif]}
             onPress={() => setSection(s)}
           >
-            <Ionicons name={s === 'vehicules' ? 'car-sport-outline' : 'home-outline'} size={16} color={section === s ? Colors.white : Colors.gray400} />
+            <Ionicons
+              name={s === 'vehicules' ? 'car-sport-outline' : 'home-outline'}
+              size={16}
+              color={section === s ? Colors.white : Colors.textLight}
+            />
             <Text style={[styles.toggleTexte, section === s && styles.toggleTexteActif]}>
               {s === 'vehicules' ? 'Véhicules' : 'Logements'}
             </Text>
@@ -75,7 +94,7 @@ export default function ExploreScreen() {
         ))}
       </View>
 
-      {/* Filtres villes */}
+      {/* ── Filtres villes ── */}
       <FlatList
         horizontal
         data={['', ...VILLES.slice(0, 8)]}
@@ -86,7 +105,7 @@ export default function ExploreScreen() {
             onPress={() => setVilleFiltre(item)}
           >
             <Text style={[styles.chipTexte, villeFiltre === item && styles.chipTexteActif]}>
-              {item || 'Toutes villes'}
+              {item || 'Toutes'}
             </Text>
           </Pressable>
         )}
@@ -95,10 +114,15 @@ export default function ExploreScreen() {
         style={styles.chipsListe}
       />
 
+      {/* ── Résultats ── */}
       {chargement ? (
-        <ActivityIndicator size="large" color={Colors.primary} style={styles.loader} />
+        <View style={styles.loaderBox}>
+          <ActivityIndicator size="large" color={Colors.accent} />
+          <Text style={styles.chargementTxt}>Recherche en cours...</Text>
+        </View>
       ) : (
         <FlatList
+          style={{ flex: 1 }}
           data={donnees}
           keyExtractor={item => item.id}
           renderItem={({ item }) =>
@@ -109,11 +133,21 @@ export default function ExploreScreen() {
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.vide}>
-              <Ionicons name={section === 'vehicules' ? 'car-outline' : 'home-outline'} size={48} color={Colors.gray300} />
-              <Text style={styles.texteVide}>Aucun résultat</Text>
+              <Ionicons
+                name={section === 'vehicules' ? 'car-outline' : 'home-outline'}
+                size={52} color={Colors.textLight}
+              />
+              <Text style={styles.videTitle}>Aucun résultat</Text>
+              <Text style={styles.videSous}>
+                {recherche
+                  ? `Aucun résultat pour "${recherche}"`
+                  : villeFiltre
+                    ? `Aucune annonce à ${villeFiltre} pour l'instant`
+                    : 'Aucune annonce disponible'}
+              </Text>
             </View>
           }
-          contentContainerStyle={{ paddingBottom: 20 }}
+          contentContainerStyle={{ paddingBottom: 100 }}
         />
       )}
     </SafeAreaView>
@@ -121,38 +155,56 @@ export default function ExploreScreen() {
 }
 
 const styles = StyleSheet.create({
-  conteneur: { flex: 1, backgroundColor: Colors.background },
-  titre: { fontSize: 24, fontWeight: '800', color: Colors.textPrimary, paddingHorizontal: 16, marginBottom: 16, marginTop: 8 },
+  page: { flex: 1, backgroundColor: Colors.background },
+
+  titre: {
+    fontSize: 24, fontWeight: '800', color: Colors.white,
+    paddingHorizontal: 20, marginBottom: 14, marginTop: 8,
+  },
+
+  // ── Recherche ──
   barreRecherche: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: Colors.white, borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 10,
-    marginHorizontal: 16, marginBottom: 12,
-    borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: Colors.glass,
+    borderWidth: 1.5, borderColor: Colors.border,
+    borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12,
+    marginHorizontal: 16, marginBottom: 14,
   },
-  input: { flex: 1, fontSize: 15, color: Colors.textPrimary },
+  input: { flex: 1, fontSize: 14, color: Colors.white },
+
+  // ── Toggle ──
   toggle: {
     flexDirection: 'row', marginHorizontal: 16,
-    marginBottom: 12, backgroundColor: Colors.gray100,
+    marginBottom: 14, backgroundColor: Colors.glass,
     borderRadius: 12, padding: 4,
+    borderWidth: 1, borderColor: Colors.border,
   },
   toggleBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingVertical: 8, borderRadius: 8,
+    gap: 6, paddingVertical: 9, borderRadius: 8,
   },
-  toggleActif: { backgroundColor: Colors.primary },
-  toggleTexte: { fontSize: 13, fontWeight: '600', color: Colors.gray400 },
-  toggleTexteActif: { color: Colors.white },
-  chips: { paddingHorizontal: 12, gap: 8 },
-  chipsListe: { marginBottom: 16, maxHeight: 44 },
+  toggleActif: {
+    backgroundColor: Colors.accent,
+    shadowColor: Colors.accent, shadowOpacity: 0.4, shadowRadius: 8, elevation: 4,
+  },
+  toggleTexte: { fontSize: 13, fontWeight: '600', color: Colors.textLight },
+  toggleTexteActif: { color: Colors.white, fontWeight: '700' },
+
+  // ── Chips villes ──
+  chipsListe: { maxHeight: 44, marginBottom: 14 },
+  chips: { paddingHorizontal: 16, gap: 8, alignItems: 'center' },
   chip: {
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-    backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 50,
+    backgroundColor: Colors.glass, borderWidth: 1.5, borderColor: Colors.border,
   },
-  chipActif: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  chipTexte: { fontSize: 13, color: Colors.textSecondary, fontWeight: '500' },
+  chipActif: { backgroundColor: Colors.accent, borderColor: Colors.accent },
+  chipTexte: { fontSize: 13, color: Colors.textSecondary, fontWeight: '600' },
   chipTexteActif: { color: Colors.white, fontWeight: '700' },
-  loader: { marginTop: 60 },
-  vide: { alignItems: 'center', paddingTop: 60, gap: 12 },
-  texteVide: { fontSize: 16, color: Colors.gray400 },
+
+  // ── États ──
+  loaderBox: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  chargementTxt: { fontSize: 14, color: Colors.textSecondary },
+  vide: { alignItems: 'center', paddingTop: 60, gap: 10 },
+  videTitle: { fontSize: 18, fontWeight: '700', color: Colors.white },
+  videSous: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', paddingHorizontal: 32 },
 });
