@@ -1,0 +1,55 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "vehicules",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "disponible", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "vehicules",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "disponible", "order": "ASCENDING" },
+        { "fieldPath": "ville", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "logements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "disponible", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "logements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "disponible", "order": "ASCENDING" },
+        { "fieldPath": "ville", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "reservations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "loueurId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "conversations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "participants", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "dernierMessageDate", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
