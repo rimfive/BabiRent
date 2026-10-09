@@ -1,12 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable,
   TextInput, ActivityIndicator, RefreshControl, ScrollView,
-  Dimensions,
+  Dimensions, Modal, Linking, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import * as Location from 'expo-location';
 import { Colors } from '../../src/config/colors';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { useAppStore } from '../../src/store/useAppStore';
@@ -47,6 +48,282 @@ const logoS = StyleSheet.create({
   rent: { color: Colors.accent, fontStyle: 'italic' },
 });
 
+// ── Noms des mois et jours en français ───────────────────────────────────────
+const MOIS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+const JOURS = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+
+// ── Formater une date en "12 jan" ────────────────────────────────────────────
+function fmtDate(d: Date) {
+  return `${d.getDate()} ${MOIS[d.getMonth()].slice(0, 3).toLowerCase()}`;
+}
+
+// ── Taille fixe des cellules du calendrier (compatible web + mobile) ──────────
+const CAL_MAX   = Math.min(width, 480);      // largeur max de la feuille
+const CAL_PAD   = 24;                        // padding horizontal de la feuille
+const CELL_SIZE = Math.floor((CAL_MAX - CAL_PAD * 2) / 7);  // ≈ 62px sur mobile
+
+// ── Calendrier modal ──────────────────────────────────────────────────────────
+function CalendrierModal({
+  visible, onClose, onConfirm,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onConfirm: (debut: Date, fin: Date) => void;
+}) {
+  const today = new Date();
+  const [annee, setAnnee] = useState(today.getFullYear());
+  const [mois, setMois]   = useState(today.getMonth());
+  const [debut, setDebut] = useState<Date | null>(null);
+  const [fin, setFin]     = useState<Date | null>(null);
+
+  // Grille : tableau de rangées de 7 jours (Date | null)[][]
+  const rangees = useMemo(() => {
+    const premier = new Date(annee, mois, 1);
+    const offset  = (premier.getDay() + 6) % 7; // 0=lun, …, 6=dim
+    const nbJours = new Date(annee, mois + 1, 0).getDate();
+    const cells: (Date | null)[] = [
+      ...Array(offset).fill(null),
+      ...Array.from({ length: nbJours }, (_, d) => new Date(annee, mois, d + 1)),
+    ];
+    while (cells.length % 7 !== 0) cells.push(null);
+    const rows: (Date | null)[][] = [];
+    for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
+    return rows;
+  }, [annee, mois]);
+
+  const moisPrecedent = () => {
+    if (mois === 0) { setMois(11); setAnnee(a => a - 1); }
+    else setMois(m => m - 1);
+  };
+  const moisSuivant = () => {
+    if (mois === 11) { setMois(0); setAnnee(a => a + 1); }
+    else setMois(m => m + 1);
+  };
+
+  const selectionnerJour = (jour: Date) => {
+    const d = new Date(jour.getFullYear(), jour.getMonth(), jour.getDate());
+    if (!debut || (debut && fin)) {
+      setDebut(d); setFin(null);
+    } else {
+      if (d < debut) { setDebut(d); setFin(null); }
+      else setFin(d);
+    }
+  };
+
+  const memeJour  = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  const estDebut  = (j: Date) => !!debut && memeJour(j, debut);
+  const estFin    = (j: Date) => !!fin   && memeJour(j, fin);
+  const estPlage  = (j: Date) => !!debut && !!fin && j > debut && j < fin;
+  const estPasse  = (j: Date) => { const auj = new Date(); auj.setHours(0,0,0,0); return j < auj; };
+
+  const confirmer = () => {
+    if (debut && fin) { onConfirm(debut, fin); onClose(); }
+  };
+
+  const nuits = debut && fin ? Math.round((fin.getTime() - debut.getTime()) / 86400000) : 0;
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={cal.fond}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+
+        <View style={cal.feuille}>
+          {/* ── Titre ── */}
+          <View style={cal.entete}>
+            <Text style={cal.titre}>Choisir les dates</Text>
+            <Pressable onPress={onClose} hitSlop={14} style={cal.closeBtn}>
+              <Ionicons name="close" size={18} color={Colors.white} />
+            </Pressable>
+          </View>
+
+          {/* ── Navigation mois / année ── */}
+          <View style={cal.navRow}>
+            <Pressable onPress={moisPrecedent} style={cal.navBtn} hitSlop={10}>
+              <Ionicons name="chevron-back" size={18} color={Colors.white} />
+            </Pressable>
+            <View style={cal.navCentre}>
+              <Text style={cal.navMois}>{MOIS[mois]}</Text>
+              <Text style={cal.navAnnee}>{annee}</Text>
+            </View>
+            <Pressable onPress={moisSuivant} style={cal.navBtn} hitSlop={10}>
+              <Ionicons name="chevron-forward" size={18} color={Colors.white} />
+            </Pressable>
+          </View>
+
+          {/* ── Noms des jours ── */}
+          <View style={cal.joursRow}>
+            {JOURS.map(j => (
+              <View key={j} style={cal.enteteCell}>
+                <Text style={cal.jourNom}>{j}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* ── Grille des jours (rangées fixes de 7) ── */}
+          {rangees.map((rangee, ri) => (
+            <View key={ri} style={cal.rangee}>
+              {rangee.map((jour, ci) => {
+                if (!jour) return <View key={ci} style={cal.cellVide} />;
+                const passe  = estPasse(jour);
+                const active = estDebut(jour) || estFin(jour);
+                const plage  = estPlage(jour);
+                const isD    = estDebut(jour);
+                const isF    = estFin(jour);
+                return (
+                  <Pressable
+                    key={ci}
+                    style={[
+                      cal.cell,
+                      plage && cal.cellPlage,
+                      isD   && cal.cellDebutRound,
+                      isF   && cal.cellFinRound,
+                      active && cal.cellActive,
+                    ]}
+                    onPress={() => !passe && selectionnerJour(jour)}
+                    disabled={passe}
+                  >
+                    <Text style={[
+                      cal.cellTxt,
+                      active && cal.cellTxtActive,
+                      passe  && cal.cellTxtPasse,
+                      (!active && plage) && cal.cellTxtPlage,
+                    ]}>
+                      {jour.getDate()}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ))}
+
+          {/* ── Résumé ── */}
+          <View style={cal.resume}>
+            {debut ? (
+              <Text style={cal.resumeTxt}>
+                {fin
+                  ? `✈ ${fmtDate(debut)}  →  ${fmtDate(fin)}   •   ${nuits} nuit${nuits > 1 ? 's' : ''}`
+                  : `Arrivée : ${fmtDate(debut)}  —  Choisissez le départ`}
+              </Text>
+            ) : (
+              <Text style={cal.resumeTxt}>Touchez une date d'arrivée</Text>
+            )}
+          </View>
+
+          {/* ── Boutons ── */}
+          <View style={cal.btnRow}>
+            {(debut || fin) && (
+              <Pressable onPress={() => { setDebut(null); setFin(null); }} style={cal.btnReset}>
+                <Ionicons name="refresh-outline" size={16} color={Colors.textSecondary} />
+                <Text style={cal.btnResetTxt}>Effacer</Text>
+              </Pressable>
+            )}
+            <Pressable
+              style={[cal.btnConfirmer, (!debut || !fin) && { opacity: 0.45 }]}
+              onPress={confirmer}
+              disabled={!debut || !fin}
+            >
+              <Ionicons name="checkmark-circle-outline" size={18} color={Colors.white} />
+              <Text style={cal.btnConfirmerTxt}>Confirmer</Text>
+            </Pressable>
+          </View>
+
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const cal = StyleSheet.create({
+  fond: {
+    flex: 1, justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.72)',
+  },
+  feuille: {
+    backgroundColor: Colors.card,
+    borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    paddingHorizontal: CAL_PAD, paddingTop: 20, paddingBottom: 32,
+    borderTopWidth: 1, borderColor: Colors.border,
+    // Centrer sur grand écran (web)
+    maxWidth: CAL_MAX, width: '100%', alignSelf: 'center',
+  },
+  entete: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 16,
+  },
+  titre: { fontSize: 17, fontWeight: '800', color: Colors.white },
+  closeBtn: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: Colors.glass, borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  navRow: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', marginBottom: 14,
+  },
+  navBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: Colors.glass, borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  navCentre: { alignItems: 'center' },
+  navMois: { fontSize: 16, fontWeight: '800', color: Colors.white },
+  navAnnee: { fontSize: 12, color: Colors.accent, fontWeight: '700' },
+
+  joursRow: { flexDirection: 'row', marginBottom: 4 },
+  enteteCell: { width: CELL_SIZE, height: 28, alignItems: 'center', justifyContent: 'center' },
+  jourNom: { fontSize: 11, fontWeight: '700', color: Colors.textSecondary },
+
+  rangee: { flexDirection: 'row' },
+  cell: {
+    width: CELL_SIZE, height: CELL_SIZE,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  cellVide: { width: CELL_SIZE, height: CELL_SIZE },
+
+  // Plage : fond orange léger sans arrondi
+  cellPlage: { backgroundColor: 'rgba(232,119,34,0.18)' },
+  // Jour début : arrondi à gauche
+  cellDebutRound: { borderTopLeftRadius: CELL_SIZE / 2, borderBottomLeftRadius: CELL_SIZE / 2 },
+  // Jour fin : arrondi à droite
+  cellFinRound: { borderTopRightRadius: CELL_SIZE / 2, borderBottomRightRadius: CELL_SIZE / 2 },
+  // Jour sélectionné (début ou fin)
+  cellActive: {
+    backgroundColor: Colors.accent,
+    borderRadius: CELL_SIZE / 2,
+  },
+
+  cellTxt: { fontSize: 14, fontWeight: '500', color: Colors.white },
+  cellTxtActive: { fontWeight: '800', color: Colors.white },
+  cellTxtPasse: { color: 'rgba(255,255,255,0.25)' },
+  cellTxtPlage: { color: Colors.accent, fontWeight: '600' },
+
+  resume: {
+    backgroundColor: Colors.glass, borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 10,
+    marginTop: 12, marginBottom: 14,
+    borderWidth: 1, borderColor: Colors.border,
+    minHeight: 38, justifyContent: 'center',
+  },
+  resumeTxt: { fontSize: 12, color: Colors.white, textAlign: 'center', fontWeight: '600' },
+
+  btnRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  btnReset: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 14, paddingVertical: 13,
+    borderRadius: 12, backgroundColor: Colors.glass,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  btnResetTxt: { fontSize: 13, color: Colors.textSecondary, fontWeight: '600' },
+  btnConfirmer: {
+    flex: 1, flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', gap: 8,
+    backgroundColor: Colors.accent, borderRadius: 12,
+    paddingVertical: 13,
+  },
+  btnConfirmerTxt: { fontSize: 15, fontWeight: '800', color: Colors.white },
+});
+
 // ── Écran principal ──────────────────────────────────────────────────────────
 export default function HomeScreen() {
   const router = useRouter();
@@ -58,6 +335,9 @@ export default function HomeScreen() {
   const [chargement, setChargement] = useState(true);
   const [rafraichissement, setRafraichissement] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [calendarVisible, setCalendarVisible] = useState(false);
+  const [dateDebut, setDateDebut] = useState<Date | null>(null);
+  const [dateFin, setDateFin]     = useState<Date | null>(null);
 
   const charger = async (silencieux = false) => {
     if (!silencieux) setChargement(true);
@@ -96,6 +376,22 @@ export default function HomeScreen() {
 
   const filtres = section === 'vehicules' ? FILTRES_VEHICULES : FILTRES_LOGEMENTS;
 
+  const ouvrirCarte = async () => {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status === 'granted') {
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const { latitude, longitude } = loc.coords;
+      const url = `https://maps.google.com/?q=${latitude},${longitude}`;
+      const ok = await Linking.canOpenURL(url);
+      if (ok) Linking.openURL(url);
+    } else {
+      Alert.alert(
+        'Localisation désactivée',
+        'Active la localisation dans les paramètres de ton appareil pour voir la carte.',
+      );
+    }
+  };
+
   return (
     <SafeAreaView style={styles.conteneur} edges={['top']}>
 
@@ -109,7 +405,7 @@ export default function HomeScreen() {
               { icone: 'home-outline' as const,       label: 'Mes logements',    route: '/mes-logements' },
               { icone: 'calendar-outline' as const,   label: 'Mes réservations', route: '/mes-reservations' },
               { icone: 'person-outline' as const,     label: 'Mon profil',       route: '/(tabs)/profile' },
-              { icone: 'settings-outline' as const,   label: 'Paramètres',       route: '/(tabs)/profile' },
+              { icone: 'settings-outline' as const,   label: 'Paramètres',       route: '/parametres' },
             ].map(item => (
               <Pressable
                 key={item.label}
@@ -147,7 +443,9 @@ export default function HomeScreen() {
       <View style={styles.rechercheWrapper}>
         <View style={styles.barreRecherche}>
           <View style={styles.rechercheGauche}>
-            <Ionicons name="location-outline" size={18} color={Colors.accent} />
+            <Pressable onPress={ouvrirCarte} hitSlop={8}>
+              <Ionicons name="location-outline" size={18} color={Colors.accent} />
+            </Pressable>
             <TextInput
               style={styles.inputRecherche}
               placeholder="Localisation"
@@ -157,10 +455,14 @@ export default function HomeScreen() {
             />
           </View>
           <View style={styles.dividerV} />
-          <View style={styles.rechercheDroite}>
+          <Pressable style={styles.rechercheDroite} onPress={() => setCalendarVisible(true)}>
             <Ionicons name="calendar-outline" size={18} color={Colors.accent} />
-            <Text style={styles.txtDates}>Dates</Text>
-          </View>
+            <Text style={[styles.txtDates, (dateDebut && dateFin) && styles.txtDatesActif]} numberOfLines={1}>
+              {dateDebut && dateFin
+                ? `${fmtDate(dateDebut)} → ${fmtDate(dateFin)}`
+                : 'Dates'}
+            </Text>
+          </Pressable>
         </View>
       </View>
 
@@ -264,6 +566,14 @@ export default function HomeScreen() {
           }
         />
       )}
+
+      {/* ── Calendrier de dates ── */}
+      <CalendrierModal
+        visible={calendarVisible}
+        onClose={() => setCalendarVisible(false)}
+        onConfirm={(d, f) => { setDateDebut(d); setDateFin(f); }}
+      />
+
     </SafeAreaView>
   );
 }
@@ -313,6 +623,7 @@ const styles = StyleSheet.create({
   },
   inputRecherche: { flex: 1, fontSize: 14, color: Colors.white },
   txtDates: { fontSize: 14, color: 'rgba(255,255,255,0.45)', flex: 1 },
+  txtDatesActif: { color: Colors.white, fontWeight: '600', fontSize: 12 },
 
   // Toggle
   toggleSection: {

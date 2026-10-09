@@ -97,7 +97,7 @@ BabiRent/
 
 ```ts
 // Thème dark navy + orange — fichier : src/config/colors.ts
-primary: '#1B3570'       // Navy principal
+primary: '#052e5c'       // Navy principal
 accent: '#E87722'        // Orange accent (CTA, boutons)
 background: '#0E1A2E'    // Fond général (dark navy)
 card: '#162440'          // Fond des cartes

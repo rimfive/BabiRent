@@ -1,7 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, Pressable, ImageBackground, Dimensions,
+  View, Text, StyleSheet, Pressable, Image, Dimensions,
 } from 'react-native';
+
+const PLACEHOLDER_V = 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=800';
+
+function uriValide(u?: string): string {
+  if (u && (u.startsWith('http://') || u.startsWith('https://'))) return u;
+  return PLACEHOLDER_V;
+}
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors } from '../../config/colors';
@@ -14,18 +21,22 @@ type Props = { vehicule: Vehicule };
 
 const CarteVehicule = ({ vehicule }: Props) => {
   const router = useRouter();
+  const [photoUri, setPhotoUri] = useState(uriValide(vehicule.photos?.[0]));
 
   return (
     <Pressable
       style={styles.carte}
       onPress={() => router.push(`/vehicule/${vehicule.id}` as any)}
     >
-      <ImageBackground
-        source={{ uri: vehicule.photos[0] || 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=800' }}
-        style={styles.photo}
-        imageStyle={styles.photoImage}
-      >
-        {/* Gradient overlay sombre */}
+      <View style={styles.photo}>
+        <Image
+          source={{ uri: photoUri }}
+          style={[StyleSheet.absoluteFill, styles.photoImage]}
+          resizeMode="cover"
+          onError={() => setPhotoUri(PLACEHOLDER_V)}
+        />
+        {/* Gradient overlay sombre bas→haut */}
+        <View style={styles.gradientOverlay} />
         <View style={styles.overlay}>
           {/* Haut : badge hôte certifié */}
           <View style={styles.haut}>
@@ -58,7 +69,7 @@ const CarteVehicule = ({ vehicule }: Props) => {
             </View>
           </View>
         </View>
-      </ImageBackground>
+      </View>
 
       {/* Infos sous la carte */}
       <View style={styles.infos}>
@@ -96,13 +107,16 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: Colors.card,
   },
-  photo: { width: '100%', height: 220 },
+  photo: { width: '100%', height: 220, overflow: 'hidden', borderRadius: 20 },
   photoImage: { borderRadius: 20 },
+  gradientOverlay: {
+    position: 'absolute', bottom: 0, left: 0, right: 0, height: 130,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
   overlay: {
-    flex: 1,
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     padding: 14,
     justifyContent: 'space-between',
-    backgroundColor: 'transparent',
   },
   haut: {
     flexDirection: 'row',

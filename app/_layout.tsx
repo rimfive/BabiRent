@@ -33,6 +33,10 @@ export default function RootLayout() {
         <Stack.Screen name="reservation/[id]" />
         <Stack.Screen name="mes-vehicules" />
         <Stack.Screen name="mes-logements" />
+        <Stack.Screen name="mes-reservations" />
+        <Stack.Screen name="modifier-profil" />
+        <Stack.Screen name="parametres" />
+        <Stack.Screen name="aide-support" />
       </Stack>
     </>
   );

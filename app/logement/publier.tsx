@@ -13,6 +13,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../src/config/colors';
 import { creerLogement } from '../../src/services/logement.service';
+import { uploaderPhotos } from '../../src/services/storage.service';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { VILLES, TYPES_LOGEMENT } from '../../src/config/constantes';
 
@@ -50,6 +51,7 @@ export default function PublierLogementScreen() {
   const router = useRouter();
   const { utilisateur } = useAuthStore();
   const [loading, setLoading] = useState(false);
+  const [uploadProgres, setUploadProgres] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
   const [equipements, setEquipements] = useState<string[]>([]);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -71,9 +73,14 @@ export default function PublierLogementScreen() {
   const ajouterPhoto = async () => {
     if (photos.length >= 8) { Alert.alert('Maximum', '8 photos maximum.'); return; }
     const r = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'], quality: 0.8, allowsMultipleSelection: true,
+      mediaTypes: ['images'], quality: 0.7, allowsMultipleSelection: true, base64: true,
     });
-    if (!r.canceled) setPhotos(p => [...p, ...r.assets.map(a => a.uri)].slice(0, 8));
+    if (!r.canceled) {
+      const uris = r.assets.map(a =>
+        a.base64 ? `data:image/jpeg;base64,${a.base64}` : a.uri
+      );
+      setPhotos(p => [...p, ...uris].slice(0, 8));
+    }
   };
 
   // ── Publier ───────────────────────────────────────────────────────────────
@@ -86,13 +93,20 @@ export default function PublierLogementScreen() {
 
     setLoading(true);
     try {
+      let urlsPhotos: string[];
+      if (photos.length > 0) {
+        setUploadProgres(`Upload photo 1/${photos.length}...`);
+        urlsPhotos = await uploaderPhotos(photos, 'logements', utilisateur.id);
+        setUploadProgres('');
+      } else {
+        urlsPhotos = ['https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=600'];
+      }
+
       const id = await creerLogement({
         proprietaireId: utilisateur.id,
         titre: form.titre.trim(),
         type: form.type,
-        photos: photos.length > 0
-          ? photos
-          : ['https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=600'],
+        photos: urlsPhotos,
         prixJour: parseFloat(form.prixJour),
         prixMois: form.prixMois ? parseFloat(form.prixMois) : 0,
         caution: parseFloat(form.caution) || 0,
@@ -299,7 +313,7 @@ export default function PublierLogementScreen() {
           >
             <Ionicons name={loading ? 'time-outline' : 'rocket-outline'} size={20} color={Colors.white} />
             <Text style={styles.btnPublierTxt}>
-              {loading ? 'Publication en cours...' : "Publier l'annonce"}
+              {uploadProgres || (loading ? 'Publication en cours...' : "Publier l'annonce")}
             </Text>
           </Pressable>
           <View style={{ height: 40 }} />

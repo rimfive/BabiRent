@@ -2,8 +2,9 @@
 // BABI RENT — Profil utilisateur
 // ══════════════════════════════════════════════════════════════════════════════
 
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Switch } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Switch, Modal } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -11,6 +12,14 @@ import { Colors } from '../../src/config/colors';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { deconnecter } from '../../src/services/auth.service';
 import { initiales, formatDate } from '../../src/utils/formatters';
+
+const LANGUES = [
+  { code: 'fr', label: 'Français',  sigle: 'FR', couleur: '#003189' },
+  { code: 'en', label: 'English',   sigle: 'EN', couleur: '#C8102E' },
+  { code: 'ar', label: 'العربية',   sigle: 'AR', couleur: '#006233' },
+  { code: 'wo', label: 'Wolof',     sigle: 'WO', couleur: '#00853F' },
+  { code: 'dj', label: 'Dioula',    sigle: 'DI', couleur: '#F77F00' },
+];
 
 // ── Ligne de menu réutilisable ────────────────────────────────────────────────
 function LigneMenu({
@@ -57,6 +66,24 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { utilisateur, reinitialiser } = useAuthStore();
   const [notifs, setNotifs] = useState(true);
+  const [langue, setLangue] = useState('fr');
+  const [langueModalVisible, setLangueModalVisible] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem('babi_langue').then(v => { if (v) setLangue(v); });
+  }, []);
+
+  const changerLangue = async (code: string) => {
+    setLangue(code);
+    await AsyncStorage.setItem('babi_langue', code);
+    setLangueModalVisible(false);
+    if (code !== 'fr') {
+      Alert.alert('Langue enregistrée', 'La traduction complète sera disponible dans la prochaine mise à jour.');
+    }
+  };
+
+  const langueActuelle = LANGUES.find(l => l.code === langue) ?? LANGUES[0];
+  const valeurLangue = `${langueActuelle.sigle} · ${langueActuelle.label}`;
 
   // ── Déconnexion ──────────────────────────────────────────────────────────
   const seDeconnecter = async () => {
@@ -149,8 +176,8 @@ export default function ProfileScreen() {
         <Text style={styles.sectionTitre}>Préférences</Text>
         <View style={styles.groupe}>
           <LigneMenu icone="notifications-outline" label="Notifications"  couleur={Colors.info}    toggle toggleValeur={notifs} onToggle={setNotifs} />
-          <LigneMenu icone="language-outline"      label="Langue"         couleur={Colors.info}    valeur="Français" onPress={() => {}} />
-          <LigneMenu icone="help-circle-outline"   label="Aide & Support" couleur={Colors.info}    onPress={() => {}} />
+          <LigneMenu icone="language-outline"      label="Langue"         couleur={Colors.info}    valeur={valeurLangue} onPress={() => setLangueModalVisible(true)} />
+          <LigneMenu icone="help-circle-outline"   label="Aide & Support" couleur={Colors.info}    onPress={() => router.push('/aide-support')} />
         </View>
 
         {/* ══ BOUTON DÉCONNEXION ══ */}
@@ -162,6 +189,44 @@ export default function ProfileScreen() {
         <Text style={styles.version}>BABI RENT v1.0.0</Text>
 
       </ScrollView>
+
+      {/* ── Modal sélection de langue ── */}
+      <Modal visible={langueModalVisible} transparent animationType="fade" onRequestClose={() => setLangueModalVisible(false)}>
+        <View style={styles.modalFond}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setLangueModalVisible(false)} />
+          <View style={styles.modalFeuille}>
+            {/* Entête */}
+            <View style={styles.modalEntete}>
+              <Text style={styles.modalTitre}>Choisir la langue</Text>
+              <Pressable onPress={() => setLangueModalVisible(false)} hitSlop={14} style={styles.modalClose}>
+                <Ionicons name="close" size={16} color={Colors.white} />
+              </Pressable>
+            </View>
+            {/* Liste des langues */}
+            {LANGUES.map(l => {
+              const actif = langue === l.code;
+              return (
+                <Pressable
+                  key={l.code}
+                  style={[styles.modalLigne, actif && styles.modalLigneActive]}
+                  onPress={() => changerLangue(l.code)}
+                >
+                  {/* Badge sigle coloré */}
+                  <View style={[styles.modalBadge, { backgroundColor: l.couleur }]}>
+                    <Text style={styles.modalBadgeTxt}>{l.sigle}</Text>
+                  </View>
+                  <Text style={[styles.modalLabel, actif && styles.modalLabelActive]}>{l.label}</Text>
+                  {actif
+                    ? <Ionicons name="checkmark-circle" size={20} color={Colors.accent} />
+                    : <View style={{ width: 20 }} />
+                  }
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -250,4 +315,23 @@ const styles = StyleSheet.create({
   btnDeconnexionTxt: { fontSize: 16, fontWeight: '700', color: Colors.error },
 
   version: { textAlign: 'center', color: Colors.textLight, fontSize: 12, marginTop: 8 },
+
+  // ── Modal langue ──
+  modalFond: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.65)' },
+  modalFeuille: {
+    backgroundColor: Colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 24, paddingBottom: 36,
+    borderTopWidth: 1, borderColor: Colors.border,
+  },
+  modalEntete: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitre: { fontSize: 18, fontWeight: '800', color: Colors.white },
+  modalLigne: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    paddingVertical: 14, paddingHorizontal: 10, borderRadius: 12,
+    marginBottom: 4,
+  },
+  modalLigneActive: { backgroundColor: 'rgba(232,119,34,0.12)', borderWidth: 1, borderColor: 'rgba(232,119,34,0.3)' },
+  modalDrapeau: { fontSize: 24 },
+  modalLabel: { flex: 1, fontSize: 16, fontWeight: '600', color: Colors.textSecondary },
+  modalLabelActive: { color: Colors.white, fontWeight: '700' },
 });

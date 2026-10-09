@@ -71,7 +71,12 @@ export default function MesVehiculesScreen() {
       {/* Photo */}
       <View style={styles.photoBox}>
         <Image
-          source={{ uri: item.photos?.[0] ?? 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=400' }}
+          source={{ uri: (() => {
+            const u = item.photos?.[0];
+            return (u && (u.startsWith('http://') || u.startsWith('https://')))
+              ? u
+              : 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=400';
+          })() }}
           style={styles.photo}
           resizeMode="cover"
         />

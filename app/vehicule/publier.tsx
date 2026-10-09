@@ -13,6 +13,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../src/config/colors';
 import { creerVehicule } from '../../src/services/vehicule.service';
+import { uploaderPhotos } from '../../src/services/storage.service';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { VILLES, MARQUES_VEHICULE, TYPES_VEHICULE } from '../../src/config/constantes';
 
@@ -58,6 +59,7 @@ export default function PublierVehiculeScreen() {
   const router = useRouter();
   const { utilisateur } = useAuthStore();
   const [loading, setLoading] = useState(false);
+  const [uploadProgres, setUploadProgres] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
   const [menuVisible, setMenuVisible] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -89,11 +91,15 @@ export default function PublierVehiculeScreen() {
     }
     const r = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      quality: 0.8,
+      quality: 0.7,
       allowsMultipleSelection: true,
+      base64: true,
     });
     if (!r.canceled) {
-      setPhotos(p => [...p, ...r.assets.map(a => a.uri)].slice(0, 8));
+      const uris = r.assets.map(a =>
+        a.base64 ? `data:image/jpeg;base64,${a.base64}` : a.uri
+      );
+      setPhotos(p => [...p, ...uris].slice(0, 8));
     }
   };
 
@@ -133,15 +139,23 @@ export default function PublierVehiculeScreen() {
 
     setLoading(true);
     try {
+      // Upload photos vers Firebase Storage
+      let urlsPhotos: string[];
+      if (photos.length > 0) {
+        setUploadProgres(`Upload photo 1/${photos.length}...`);
+        urlsPhotos = await uploaderPhotos(photos, 'vehicules', utilisateur.id);
+        setUploadProgres('');
+      } else {
+        urlsPhotos = ['https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=800'];
+      }
+
       const id = await creerVehicule({
         proprietaireId: utilisateur.id,
         marque: form.marque,
         modele: form.modele.trim(),
         annee: parseInt(form.annee) || new Date().getFullYear(),
         type: form.type,
-        photos: photos.length > 0
-          ? photos
-          : ['https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=800'],
+        photos: urlsPhotos,
         prixJour: parseFloat(form.prixJour),
         caution: parseFloat(form.caution) || 0,
         ville: form.ville,
@@ -185,9 +199,9 @@ export default function PublierVehiculeScreen() {
     }
   };
 
-  // ── Retour vers les tabs ──────────────────────────────────────────────────
   const retour = () => {
-    try { router.back(); } catch (_) { router.replace('/(tabs)'); }
+    if (router.canGoBack()) router.back();
+    else router.replace('/(tabs)');
   };
 
   return (
@@ -419,7 +433,7 @@ export default function PublierVehiculeScreen() {
           >
             <Ionicons name={loading ? 'time-outline' : 'rocket-outline'} size={20} color={Colors.white} />
             <Text style={styles.btnPublierTxt}>
-              {loading ? 'Publication en cours...' : "Publier l'annonce"}
+              {uploadProgres || (loading ? 'Publication en cours...' : "Publier l'annonce")}
             </Text>
           </Pressable>
 
