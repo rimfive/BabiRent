@@ -3,7 +3,7 @@
 // ══════════════════════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Switch, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Switch, Modal, Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -119,12 +119,19 @@ export default function ProfileScreen() {
 
         {/* ══ CARTE PROFIL ══ */}
         <View style={styles.carteProfil}>
-          {/* Avatar avec initiales */}
-          <View style={styles.avatar}>
-            <Text style={styles.avatarTxt}>
-              {initiales(utilisateur.nom, utilisateur.prenom)}
-            </Text>
-          </View>
+          {/* Avatar : photo réelle ou initiales */}
+          <Pressable style={styles.avatar} onPress={() => router.push('/modifier-profil')}>
+            {utilisateur.photoUrl ? (
+              <Image source={{ uri: utilisateur.photoUrl }} style={styles.avatarImg} />
+            ) : (
+              <Text style={styles.avatarTxt}>
+                {initiales(utilisateur.nom, utilisateur.prenom)}
+              </Text>
+            )}
+            <View style={styles.avatarEdit}>
+              <Ionicons name="pencil" size={10} color={Colors.white} />
+            </View>
+          </Pressable>
 
           <View style={{ flex: 1 }}>
             <Text style={styles.nom}>{utilisateur.prenom} {utilisateur.nom}</Text>
@@ -259,8 +266,16 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
     alignItems: 'center', justifyContent: 'center',
     shadowColor: Colors.accent, shadowOpacity: 0.4, shadowRadius: 10, elevation: 6,
+    position: 'relative',
   },
+  avatarImg: { width: 68, height: 68, borderRadius: 34 },
   avatarTxt: { color: Colors.white, fontSize: 24, fontWeight: '900' },
+  avatarEdit: {
+    position: 'absolute', bottom: 0, right: 0,
+    width: 20, height: 20, borderRadius: 10,
+    backgroundColor: Colors.primary, borderWidth: 1.5, borderColor: Colors.background,
+    alignItems: 'center', justifyContent: 'center',
+  },
   nom: { fontSize: 17, fontWeight: '800', color: Colors.white, marginBottom: 2 },
   email: { fontSize: 13, color: Colors.textSecondary, marginBottom: 5 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 3 },
@@ -325,13 +340,22 @@ const styles = StyleSheet.create({
   },
   modalEntete: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitre: { fontSize: 18, fontWeight: '800', color: Colors.white },
+  modalClose: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: Colors.glass, borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
   modalLigne: {
     flexDirection: 'row', alignItems: 'center', gap: 14,
     paddingVertical: 14, paddingHorizontal: 10, borderRadius: 12,
     marginBottom: 4,
   },
   modalLigneActive: { backgroundColor: 'rgba(232,119,34,0.12)', borderWidth: 1, borderColor: 'rgba(232,119,34,0.3)' },
-  modalDrapeau: { fontSize: 24 },
+  modalBadge: {
+    width: 36, height: 24, borderRadius: 4,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  modalBadgeTxt: { fontSize: 11, fontWeight: '800', color: Colors.white },
   modalLabel: { flex: 1, fontSize: 16, fontWeight: '600', color: Colors.textSecondary },
   modalLabelActive: { color: Colors.white, fontWeight: '700' },
 });

@@ -6,56 +6,48 @@ import { useRouter } from 'expo-router';
 import { Colors } from '../../src/config/colors';
 import { useAppStore } from '../../src/store/useAppStore';
 
+const CONFIGS = {
+  vehicules:   { route: '/vehicule/publier',  icone: 'car-sport'     as const, label: 'un véhicule' },
+  logements:   { route: '/logement/publier',  icone: 'home'          as const, label: 'un logement' },
+  marketplace: { route: '/article/publier',   icone: 'storefront'    as const, label: 'un article'  },
+};
+
 export default function PublierTab() {
   const router = useRouter();
   const { section } = useAppStore();
+  const config = CONFIGS[section];
 
-  // Redirige automatiquement selon la section active
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (section === 'logements') {
-        router.replace('/logement/publier');
-      } else {
-        router.replace('/vehicule/publier');
-      }
+      router.replace(config.route as any);
     }, 0);
     return () => clearTimeout(timer);
   }, [section]);
 
-  // Affichage temporaire pendant la redirection
   return (
     <SafeAreaView style={styles.conteneur}>
       <View style={styles.centre}>
         <View style={styles.iconeBox}>
-          <Ionicons
-            name={section === 'logements' ? 'home' : 'car-sport'}
-            size={44}
-            color={Colors.accent}
-          />
+          <Ionicons name={config.icone} size={44} color={Colors.accent} />
         </View>
-        <Text style={styles.titre}>
-          Publier {section === 'logements' ? 'un logement' : 'un véhicule'}
-        </Text>
+        <Text style={styles.titre}>Publier {config.label}</Text>
         <Text style={styles.sous}>Redirection en cours...</Text>
 
-        {/* Option manuelle pour changer de type */}
-        <Pressable
-          style={styles.btnChanger}
-          onPress={() =>
-            router.replace(
-              section === 'logements' ? '/vehicule/publier' : '/logement/publier'
-            )
+        <View style={styles.autresOptions}>
+          {(Object.entries(CONFIGS) as [string, typeof config][])
+            .filter(([key]) => key !== section)
+            .map(([key, cfg]) => (
+              <Pressable
+                key={key}
+                style={styles.btnChanger}
+                onPress={() => router.replace(cfg.route as any)}
+              >
+                <Ionicons name={cfg.icone} size={16} color={Colors.textSecondary} />
+                <Text style={styles.txtChanger}>Publier {cfg.label}</Text>
+              </Pressable>
+            ))
           }
-        >
-          <Ionicons
-            name={section === 'logements' ? 'car-sport-outline' : 'home-outline'}
-            size={16}
-            color={Colors.textSecondary}
-          />
-          <Text style={styles.txtChanger}>
-            Publier {section === 'logements' ? 'un véhicule' : 'un logement'} à la place
-          </Text>
-        </Pressable>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -73,6 +65,7 @@ const styles = StyleSheet.create({
   },
   titre: { fontSize: 22, fontWeight: '800', color: Colors.textPrimary, marginBottom: 8 },
   sous: { fontSize: 15, color: Colors.textSecondary, marginBottom: 32 },
+  autresOptions: { gap: 10, alignItems: 'center' },
   btnChanger: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingHorizontal: 20, paddingVertical: 12,

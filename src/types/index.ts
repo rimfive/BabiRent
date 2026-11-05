@@ -88,6 +88,9 @@ export type StatutReservation =
   | 'terminee'
   | 'annulee';
 
+// Statut du paiement en ligne (CinetPay) — écrit uniquement par le serveur
+export type StatutPaiement = 'non_paye' | 'en_cours' | 'paye' | 'echoue' | 'rembourse';
+
 export type Reservation = {
   id: string;
   type: TypeReservation;
@@ -102,10 +105,13 @@ export type Reservation = {
   montantProprietaire: number;
   statut: StatutReservation;
   methodePaiement: 'mobile_money' | 'carte' | 'especes';
+  statutPaiement: StatutPaiement;
   paiementRef?: string;
   avecChauffeur?: boolean;   // pour les véhicules
   message?: string;
   createdAt: string;
+  imageUrl?: string;
+  titreAnnonce?: string;
 };
 
 // ─── MESSAGES / CHAT ─────────────────────────────────────────────────────────
@@ -142,9 +148,39 @@ export type Avis = {
   createdAt: string;
 };
 
+// ─── MARKETPLACE ─────────────────────────────────────────────────────────────
+
+export type EtatArticle = 'neuf' | 'bon_etat' | 'use';
+export type TypeTransaction = 'vente' | 'location';
+
+export type Article = {
+  id: string;
+  proprietaireId: string;
+  titre: string;
+  description: string;
+  photos: string[];
+  prix: number;
+  typeTransaction: TypeTransaction;
+  categorie: string;
+  ville: string;
+  pays: string;
+  etat: EtatArticle;
+  disponible: boolean;
+  note: number;
+  nombreAvis: number;
+  createdAt: string;
+};
+
+export type FiltresArticle = {
+  ville?: string;
+  categorie?: string;
+  typeTransaction?: TypeTransaction;
+  prixMax?: number;
+};
+
 // ─── NAVIGATION ──────────────────────────────────────────────────────────────
 
-export type SectionType = 'vehicules' | 'logements';
+export type SectionType = 'vehicules' | 'logements' | 'marketplace';
 
 export type FiltresVehicule = {
   ville?: string;

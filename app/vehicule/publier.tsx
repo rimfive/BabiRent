@@ -93,11 +93,11 @@ export default function PublierVehiculeScreen() {
       mediaTypes: ['images'],
       quality: 0.7,
       allowsMultipleSelection: true,
-      base64: true,
+      base64: Platform.OS === 'web',
     });
     if (!r.canceled) {
       const uris = r.assets.map(a =>
-        a.base64 ? `data:image/jpeg;base64,${a.base64}` : a.uri
+        (Platform.OS === 'web' && a.base64) ? `data:image/jpeg;base64,${a.base64}` : a.uri
       );
       setPhotos(p => [...p, ...uris].slice(0, 8));
     }

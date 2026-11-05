@@ -1,19 +1,38 @@
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut,
-  sendPasswordResetEmail,
-  updateProfile,
-  signInWithPhoneNumber,
-  RecaptchaVerifier,
-  ConfirmationResult,
-  User,
-} from 'firebase/auth';
-import { doc, setDoc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '../config/firebase';
+import { supabase } from '../config/supabase';
 import { Utilisateur } from '../types';
 
-// Inscription
+// ── Convertir la ligne DB (snake_case) → type TypeScript (camelCase) ──────────
+const dbToUtilisateur = (row: any): Utilisateur => ({
+  id:              row.id,
+  nom:             row.nom,
+  prenom:          row.prenom,
+  email:           row.email,
+  telephone:       row.telephone ?? '',
+  photoUrl:        row.photo_url,
+  ville:           row.ville ?? '',
+  pays:            row.pays ?? "Côte d'Ivoire",
+  isVerifie:       row.is_verifie ?? false,
+  isProprietaire:  row.is_proprietaire ?? false,
+  note:            row.note ?? 0,
+  nombreAvis:      row.nombre_avis ?? 0,
+  createdAt:       row.created_at ?? new Date().toISOString(),
+});
+
+// ── Traduire une erreur Supabase Auth en message lisible (français) ──────────
+export const traduireErreurAuth = (err: unknown, defaut = 'Une erreur est survenue.'): string => {
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  const m = msg.toLowerCase();
+  if (m.includes('invalid login credentials')) return 'Email ou mot de passe incorrect.';
+  if (m.includes('email not confirmed'))       return 'Confirme ton email avant de te connecter (vérifie ta boîte mail).';
+  if (m.includes('already registered') || m.includes('already exists')) return 'Cet email est déjà utilisé.';
+  if (m.includes('password should be') || m.includes('weak password'))  return 'Mot de passe trop faible (minimum 6 caractères).';
+  if (m.includes('rate limit') || m.includes('too many'))               return 'Trop de tentatives. Réessaie dans quelques minutes.';
+  if (m.includes('network request failed') || m.includes('failed to fetch'))
+    return 'Impossible de joindre le serveur. Vérifie ta connexion internet.';
+  return msg || defaut;
+};
+
+// ── Inscription ───────────────────────────────────────────────────────────────
 export const inscrire = async (
   email: string,
   motDePasse: string,
@@ -22,120 +41,95 @@ export const inscrire = async (
   telephone: string,
   ville: string,
 ): Promise<Utilisateur> => {
-  const { user } = await createUserWithEmailAndPassword(auth, email, motDePasse);
+  // 1. Créer le compte dans Supabase Auth (métadonnées pour le trigger DB)
+  const { data: authData, error: authError } = await supabase.auth.signUp({
+    email,
+    password: motDePasse,
+    options: { data: { nom, prenom, telephone, ville } },
+  });
+  if (authError) throw new Error(authError.message);
+  if (!authData.user) throw new Error('Erreur création du compte');
 
-  await updateProfile(user, { displayName: `${prenom} ${nom}` });
+  // Si email confirmation requise → session null
+  if (!authData.session) {
+    throw new Error('Confirmation email requise. Vérifie ta boîte mail, puis connecte-toi.');
+  }
 
-  const utilisateur: Utilisateur = {
-    id: user.uid,
+  const uid = authData.user.id;
+
+  const profil = {
+    id:               uid,
     nom,
     prenom,
     email,
     telephone,
     ville,
-    pays: 'Côte d\'Ivoire',
-    isVerifie: false,
-    isProprietaire: false,
-    note: 0,
-    nombreAvis: 0,
-    createdAt: new Date().toISOString(),
+    pays:             "Côte d'Ivoire",
+    is_verifie:       false,
+    is_proprietaire:  false,
+    note:             0,
+    nombre_avis:      0,
   };
 
-  await setDoc(doc(db, 'users', user.uid), {
-    ...utilisateur,
-    createdAt: serverTimestamp(),
-  });
+  // 2. Upsert le profil (resilient si un trigger DB l'a déjà créé)
+  const { error: dbError } = await supabase.from('users').upsert(profil);
+  if (dbError) throw new Error(dbError.message);
 
-  return utilisateur;
+  return dbToUtilisateur({ ...profil, created_at: new Date().toISOString() });
 };
 
-// Connexion
-export const connecter = async (email: string, motDePasse: string): Promise<User> => {
-  const { user } = await signInWithEmailAndPassword(auth, email, motDePasse);
-  return user;
+// ── Connexion ─────────────────────────────────────────────────────────────────
+export const connecter = async (
+  email: string,
+  motDePasse: string,
+): Promise<Utilisateur> => {
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password: motDePasse });
+  if (error) throw new Error(error.message);
+  if (!data.user) throw new Error('Utilisateur introuvable');
+
+  const profil = await getProfilUtilisateur(data.user.id);
+  if (!profil) throw new Error('Profil introuvable');
+  return profil;
 };
 
-// Déconnexion
+// ── Déconnexion ───────────────────────────────────────────────────────────────
 export const deconnecter = async (): Promise<void> => {
-  await signOut(auth);
+  const { error } = await supabase.auth.signOut();
+  if (error) throw new Error(error.message);
 };
 
-// Récupérer le profil Firestore
+// ── Récupérer le profil depuis Supabase ──────────────────────────────────────
 export const getProfilUtilisateur = async (uid: string): Promise<Utilisateur | null> => {
-  const snap = await getDoc(doc(db, 'users', uid));
-  if (!snap.exists()) return null;
-  const data = snap.data();
-  return {
-    id: snap.id,
-    ...data,
-    // Convertir le Timestamp Firestore en string ISO (évite "Invalid Date")
-    createdAt: data.createdAt?.toDate?.()?.toISOString() ?? new Date().toISOString(),
-  } as Utilisateur;
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', uid)
+    .single();
+
+  if (error || !data) return null;
+  return dbToUtilisateur(data);
 };
 
-// Mettre à jour le profil
+// ── Mettre à jour le profil ───────────────────────────────────────────────────
 export const mettreAJourProfil = async (
   uid: string,
   data: Partial<Utilisateur>,
 ): Promise<void> => {
-  await updateDoc(doc(db, 'users', uid), data);
+  // Convertir camelCase → snake_case pour la DB
+  const dbData: Record<string, any> = {};
+  if (data.nom             !== undefined) dbData.nom              = data.nom;
+  if (data.prenom          !== undefined) dbData.prenom           = data.prenom;
+  if (data.telephone       !== undefined) dbData.telephone        = data.telephone;
+  if (data.ville           !== undefined) dbData.ville            = data.ville;
+  if (data.photoUrl        !== undefined) dbData.photo_url        = data.photoUrl;
+  if (data.isProprietaire  !== undefined) dbData.is_proprietaire  = data.isProprietaire;
+
+  const { error } = await supabase.from('users').update(dbData).eq('id', uid);
+  if (error) throw new Error(error.message);
 };
 
-// Réinitialiser le mot de passe
+// ── Réinitialiser le mot de passe ────────────────────────────────────────────
 export const reinitialiserMotDePasse = async (email: string): Promise<void> => {
-  await sendPasswordResetEmail(auth, email);
-};
-
-// ── AUTH PAR TÉLÉPHONE ────────────────────────────────────────────────
-
-// Étape 1 — Envoyer le code SMS
-export const envoyerCodeSMS = async (
-  telephone: string,
-  recaptchaVerifier: RecaptchaVerifier,
-): Promise<ConfirmationResult> => {
-  return signInWithPhoneNumber(auth, telephone, recaptchaVerifier);
-};
-
-// Étape 2 — Vérifier le code reçu par SMS
-export const verifierCodeSMS = async (
-  confirmation: ConfirmationResult,
-  code: string,
-): Promise<User> => {
-  const { user } = await confirmation.confirm(code);
-  return user;
-};
-
-// Créer le profil Firestore après connexion téléphone
-export const creerProfilTelephone = async (
-  user: User,
-  nom: string,
-  prenom: string,
-  telephone: string,
-  ville: string,
-): Promise<Utilisateur> => {
-  // Vérifier si le profil existe déjà
-  const existant = await getProfilUtilisateur(user.uid);
-  if (existant) return existant;
-
-  const utilisateur: Utilisateur = {
-    id: user.uid,
-    nom,
-    prenom,
-    email: user.email || '',
-    telephone,
-    ville,
-    pays: 'Côte d\'Ivoire',
-    isVerifie: true, // téléphone vérifié automatiquement
-    isProprietaire: false,
-    note: 0,
-    nombreAvis: 0,
-    createdAt: new Date().toISOString(),
-  };
-
-  await setDoc(doc(db, 'users', user.uid), {
-    ...utilisateur,
-    createdAt: serverTimestamp(),
-  });
-
-  return utilisateur;
+  const { error } = await supabase.auth.resetPasswordForEmail(email);
+  if (error) throw new Error(error.message);
 };

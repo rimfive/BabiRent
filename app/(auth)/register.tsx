@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import { Colors } from '../../src/config/colors';
-import { inscrire } from '../../src/services/auth.service';
+import { inscrire, traduireErreurAuth } from '../../src/services/auth.service';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { VILLES } from '../../src/config/constantes';
 
@@ -55,10 +55,7 @@ export default function RegisterScreen() {
       setUtilisateur(profil);
       router.replace('/(tabs)');
     } catch (err: any) {
-      let msg = "Erreur lors de l'inscription";
-      if (err.code === 'auth/email-already-in-use') msg = 'Cet email est déjà utilisé.';
-      if (err.code === 'auth/weak-password') msg = 'Mot de passe trop faible.';
-      Alert.alert('Inscription impossible', msg);
+      Alert.alert('Inscription impossible', traduireErreurAuth(err, "Erreur lors de l'inscription"));
     } finally {
       setLoading(false);
     }

@@ -1,232 +1,171 @@
-// ══════════════════════════════════════════════════════════════════════════════
-// BABI RENT — Mes véhicules publiés
-// ══════════════════════════════════════════════════════════════════════════════
-
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, Pressable, Image, ActivityIndicator,
+  View, Text, StyleSheet, FlatList, Pressable,
+  Image, ActivityIndicator, RefreshControl, Alert,
 } from 'react-native';
+import { ToggleDispo } from '../src/components/ui/ToggleDispo';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { Colors } from '../src/config/colors';
-import { getVehiculesProprietaire, supprimerVehicule } from '../src/services/vehicule.service';
 import { useAuthStore } from '../src/store/useAuthStore';
+import {
+  getVehiculesProprietaire, mettreAJourVehicule, supprimerVehicule,
+} from '../src/services/vehicule.service';
 import { Vehicule } from '../src/types';
 import { formatPrix } from '../src/utils/formatters';
+
+function CarteVehiculeAdmin({
+  vehicule, onToggle, onSupprimer,
+}: {
+  vehicule: Vehicule;
+  onToggle: (id: string, dispo: boolean) => void;
+  onSupprimer: (id: string) => void;
+}) {
+  const photo = vehicule.photos[0];
+
+  return (
+    <View style={styles.carte}>
+      {photo ? (
+        <Image source={{ uri: photo }} style={styles.photo} resizeMode="cover" />
+      ) : (
+        <View style={[styles.photo, styles.photoVide]}>
+          <Ionicons name="car-sport-outline" size={32} color={Colors.textLight} />
+        </View>
+      )}
+
+      <View style={styles.carteInfo}>
+        <Text style={styles.carteTitre} numberOfLines={1}>{vehicule.marque} {vehicule.modele}</Text>
+        <Text style={styles.carteSous}>{vehicule.annee} · {vehicule.ville}</Text>
+        <Text style={styles.cartePrix}>{formatPrix(vehicule.prixJour)}<Text style={styles.parJour}>/jour</Text></Text>
+
+        <View style={styles.carteActions}>
+          <View style={styles.dispoRow}>
+            <Text style={[styles.dispoTxt, { color: vehicule.disponible ? Colors.success : Colors.textSecondary }]}>
+              {vehicule.disponible ? 'Disponible' : 'Indisponible'}
+            </Text>
+            <ToggleDispo value={vehicule.disponible} onChange={v => onToggle(vehicule.id, v)} />
+          </View>
+          <Pressable
+            style={styles.btnSupprimer}
+            onPress={() => onSupprimer(vehicule.id)}
+            hitSlop={8}
+          >
+            <Ionicons name="trash-outline" size={17} color={Colors.error} />
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+}
 
 export default function MesVehiculesScreen() {
   const router = useRouter();
   const { utilisateur } = useAuthStore();
-  const [vehicules, setVehicules] = useState<Vehicule[]>([]);
-  const [chargement, setChargement] = useState(true);
-  const [erreur, setErreur] = useState<string | null>(null);
-  // ID du véhicule en attente de confirmation de suppression
-  const [supprimerConfirm, setSupprimerConfirm] = useState<string | null>(null);
-  const [supprimerEnCours, setSupprimerEnCours] = useState(false);
 
-  useEffect(() => {
+  const [vehicules,   setVehicules]   = useState<Vehicule[]>([]);
+  const [chargement,  setChargement]  = useState(true);
+  const [rafraich,    setRafraich]    = useState(false);
+
+  const charger = useCallback(async (silencieux = false) => {
+    if (!silencieux) setChargement(true);
     if (!utilisateur) return;
-    charger();
+    try {
+      const data = await getVehiculesProprietaire(utilisateur.id);
+      setVehicules(data);
+    } catch {}
+    finally { setChargement(false); setRafraich(false); }
   }, [utilisateur]);
 
-  const charger = async () => {
-    if (!utilisateur) return;
-    setChargement(true);
-    setErreur(null);
+  useEffect(() => { charger(); }, []);
+
+  const toggleDisponible = async (id: string, dispo: boolean) => {
+    setVehicules(vs => vs.map(v => v.id === id ? { ...v, disponible: dispo } : v));
     try {
-      const liste = await getVehiculesProprietaire(utilisateur.id);
-      setVehicules(liste);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setErreur(msg);
-    } finally {
-      setChargement(false);
+      await mettreAJourVehicule(id, { disponible: dispo });
+    } catch {
+      setVehicules(vs => vs.map(v => v.id === id ? { ...v, disponible: !dispo } : v));
+      Alert.alert('Erreur', 'Impossible de mettre à jour la disponibilité.');
     }
   };
 
-  // ── Supprimer un véhicule ───────────────────────────────────────────────
-  const confirmerSuppression = async () => {
-    if (!supprimerConfirm) return;
-    setSupprimerEnCours(true);
-    try {
-      await supprimerVehicule(supprimerConfirm);
-      setVehicules(p => p.filter(v => v.id !== supprimerConfirm));
-      setSupprimerConfirm(null);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setErreur(`Suppression impossible : ${msg}`);
-      setSupprimerConfirm(null);
-    } finally {
-      setSupprimerEnCours(false);
-    }
+  const supprimer = (id: string) => {
+    Alert.alert('Supprimer l\'annonce', 'Cette action est irréversible. Continuer ?', [
+      {
+        text: 'Supprimer',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await supprimerVehicule(id);
+            setVehicules(vs => vs.filter(v => v.id !== id));
+          } catch {
+            Alert.alert('Erreur', 'Impossible de supprimer cette annonce.');
+          }
+        },
+      },
+      { text: 'Annuler', style: 'cancel' },
+    ]);
   };
 
-  // ── Carte véhicule ──────────────────────────────────────────────────────
-  const CarteVehicule = ({ item }: { item: Vehicule }) => (
-    <Pressable
-      style={styles.carte}
-      onPress={() => router.push(`/vehicule/${item.id}`)}
-    >
-      {/* Photo */}
-      <View style={styles.photoBox}>
-        <Image
-          source={{ uri: (() => {
-            const u = item.photos?.[0];
-            return (u && (u.startsWith('http://') || u.startsWith('https://')))
-              ? u
-              : 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=400';
-          })() }}
-          style={styles.photo}
-          resizeMode="cover"
-        />
-        {/* Badge disponibilité */}
-        <View style={[styles.badge, { backgroundColor: item.disponible ? Colors.successLight : Colors.errorLight }]}>
-          <View style={[styles.badgeDot, { backgroundColor: item.disponible ? Colors.success : Colors.error }]} />
-          <Text style={[styles.badgeTxt, { color: item.disponible ? Colors.success : Colors.error }]}>
-            {item.disponible ? 'Disponible' : 'Indisponible'}
-          </Text>
-        </View>
-      </View>
-
-      {/* Infos */}
-      <View style={styles.infos}>
-        <View style={styles.infosTop}>
-          <Text style={styles.nom}>{item.marque} {item.modele}</Text>
-          <Text style={styles.prix}>{formatPrix(item.prixJour)}<Text style={styles.prixUnit}>/j</Text></Text>
-        </View>
-        <View style={styles.metaRow}>
-          <Ionicons name="location-outline" size={13} color={Colors.textSecondary} />
-          <Text style={styles.meta}>{item.ville}</Text>
-          <Text style={styles.sep}>·</Text>
-          <Ionicons name="car-outline" size={13} color={Colors.textSecondary} />
-          <Text style={styles.meta}>{item.type}</Text>
-          <Text style={styles.sep}>·</Text>
-          <Text style={styles.meta}>{item.annee}</Text>
-        </View>
-
-        {/* Boutons d'action */}
-        <View style={styles.actionsRow}>
-          <Ionicons name="star" size={13} color={Colors.accent} />
-          <Text style={styles.note}>{item.note.toFixed(1)}</Text>
-          <Text style={styles.avis}>({item.nombreAvis} avis)</Text>
-
-          <View style={{ flex: 1 }} />
-
-          {/* Bouton Modifier */}
-          <Pressable
-            style={styles.btnModif}
-            onPress={() => router.push({ pathname: '/vehicule/modifier', params: { id: item.id } })}
-            hitSlop={8}
-          >
-            <Ionicons name="create-outline" size={14} color={Colors.accent} />
-            <Text style={styles.btnModifTxt}>Modifier</Text>
-          </Pressable>
-
-          {/* Bouton Supprimer */}
-          <Pressable
-            style={styles.btnSuppr}
-            onPress={() => setSupprimerConfirm(item.id)}
-            hitSlop={8}
-          >
-            <Ionicons name="trash-outline" size={14} color={Colors.error} />
-          </Pressable>
-        </View>
-      </View>
-    </Pressable>
-  );
+  const disponibles   = vehicules.filter(v => v.disponible).length;
+  const indisponibles = vehicules.filter(v => !v.disponible).length;
 
   return (
-    <SafeAreaView style={styles.page}>
+    <SafeAreaView style={styles.page} edges={['top']}>
 
-      {/* ── Header ── */}
       <View style={styles.header}>
-        <Pressable
-          style={styles.headerBtn}
-          onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/profile')}
-          hitSlop={16}
-        >
-          <Ionicons name="arrow-back" size={22} color={Colors.white} />
+        <Pressable style={styles.headerBtn} onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/profile')} hitSlop={12}>
+          <Ionicons name="arrow-back" size={20} color={Colors.white} />
         </Pressable>
-        <Text style={styles.titre}>Mes véhicules</Text>
-        <Pressable style={styles.headerBtn} onPress={() => router.push('/vehicule/publier')} hitSlop={16}>
-          <Ionicons name="add" size={26} color={Colors.accent} />
+        <Text style={styles.headerTitre}>Mes véhicules</Text>
+        <Pressable style={styles.headerAjouter} onPress={() => router.push('/vehicule/publier' as any)}>
+          <Ionicons name="add" size={20} color={Colors.white} />
         </Pressable>
       </View>
 
-      {/* ── Dialog confirmation suppression ── */}
-      {supprimerConfirm && (
-        <>
-          <Pressable style={styles.overlay} onPress={() => setSupprimerConfirm(null)} />
-          <View style={styles.dialog}>
-            <View style={styles.dialogIcone}>
-              <Ionicons name="trash-outline" size={28} color={Colors.error} />
-            </View>
-            <Text style={styles.dialogTitre}>Supprimer ce véhicule ?</Text>
-            <Text style={styles.dialogSous}>
-              Cette action est irréversible. L'annonce sera définitivement supprimée.
-            </Text>
-            <View style={styles.dialogBtns}>
-              <Pressable
-                style={styles.dialogBtnAnnuler}
-                onPress={() => setSupprimerConfirm(null)}
-                disabled={supprimerEnCours}
-              >
-                <Text style={styles.dialogBtnAnnulerTxt}>Annuler</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.dialogBtnSuppr, supprimerEnCours && { opacity: 0.6 }]}
-                onPress={confirmerSuppression}
-                disabled={supprimerEnCours}
-              >
-                {supprimerEnCours
-                  ? <ActivityIndicator size="small" color={Colors.white} />
-                  : <Text style={styles.dialogBtnSupprTxt}>Supprimer</Text>
-                }
-              </Pressable>
-            </View>
+      {!chargement && vehicules.length > 0 && (
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <Text style={styles.statVal}>{vehicules.length}</Text>
+            <Text style={styles.statLabel}>Total</Text>
           </View>
-        </>
-      )}
-
-      {/* ── Erreur globale ── */}
-      {erreur && !chargement && (
-        <View style={styles.bandeauErreur}>
-          <Ionicons name="alert-circle-outline" size={16} color={Colors.error} />
-          <Text style={styles.bandeauErreurTxt} numberOfLines={2}>{erreur}</Text>
-          <Pressable onPress={() => setErreur(null)} hitSlop={8}>
-            <Ionicons name="close" size={16} color={Colors.error} />
-          </Pressable>
+          <View style={[styles.statItem, styles.statBorder]}>
+            <Text style={[styles.statVal, { color: Colors.success }]}>{disponibles}</Text>
+            <Text style={styles.statLabel}>Disponibles</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={[styles.statVal, { color: Colors.error }]}>{indisponibles}</Text>
+            <Text style={styles.statLabel}>Indisponibles</Text>
+          </View>
         </View>
       )}
 
-      {/* ── Contenu ── */}
       {chargement ? (
-        <View style={styles.centre}>
-          <ActivityIndicator size="large" color={Colors.accent} />
-          <Text style={styles.chargementTxt}>Chargement...</Text>
-        </View>
-      ) : vehicules.length === 0 && !erreur ? (
-        <View style={styles.centre}>
-          <Ionicons name="car-outline" size={64} color={Colors.textLight} />
-          <Text style={styles.videTitle}>Aucun véhicule publié</Text>
-          <Text style={styles.videSous}>Publie ton premier véhicule et commence à gagner !</Text>
-          <Pressable style={styles.btnPublier} onPress={() => router.push('/vehicule/publier')}>
-            <Ionicons name="add-circle-outline" size={20} color={Colors.white} />
-            <Text style={styles.btnPublierTxt}>Publier un véhicule</Text>
-          </Pressable>
-        </View>
+        <View style={styles.loader}><ActivityIndicator size="large" color={Colors.accent} /></View>
       ) : (
         <FlatList
           data={vehicules}
-          keyExtractor={item => item.id}
-          renderItem={({ item }) => <CarteVehicule item={item} />}
+          keyExtractor={v => v.id}
+          renderItem={({ item }) => (
+            <CarteVehiculeAdmin
+              vehicule={item}
+              onToggle={toggleDisponible}
+              onSupprimer={supprimer}
+            />
+          )}
           contentContainerStyle={styles.liste}
           showsVerticalScrollIndicator={false}
-          ListHeaderComponent={
-            <Text style={styles.compteLabel}>
-              {vehicules.length} véhicule{vehicules.length > 1 ? 's' : ''} publié{vehicules.length > 1 ? 's' : ''}
-            </Text>
+          refreshControl={<RefreshControl refreshing={rafraich} onRefresh={() => { setRafraich(true); charger(true); }} tintColor={Colors.accent} />}
+          ListEmptyComponent={
+            <View style={styles.vide}>
+              <Ionicons name="car-outline" size={60} color={Colors.textLight} />
+              <Text style={styles.videT}>Aucun véhicule publié</Text>
+              <Text style={styles.videS}>Publie ton premier véhicule et commence à gagner.</Text>
+              <Pressable style={styles.videBtn} onPress={() => router.push('/vehicule/publier' as any)}>
+                <Ionicons name="add-circle-outline" size={18} color={Colors.white} />
+                <Text style={styles.videBtnTxt}>Publier un véhicule</Text>
+              </Pressable>
+            </View>
           }
         />
       )}
@@ -235,123 +174,62 @@ export default function MesVehiculesScreen() {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: Colors.background },
+  page:   { flex: 1, backgroundColor: Colors.background },
+  loader: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   header: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 8, paddingVertical: 6,
+    paddingHorizontal: 12, paddingVertical: 10,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   headerBtn: {
-    width: 44, height: 44, borderRadius: 22,
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: Colors.glass, borderWidth: 1, borderColor: Colors.border,
     alignItems: 'center', justifyContent: 'center',
   },
-  titre: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '800', color: Colors.white },
-
-  // ── Dialog suppression ──
-  overlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 50,
-  },
-  dialog: {
-    position: 'absolute', left: 24, right: 24,
-    top: '35%', zIndex: 51,
-    backgroundColor: Colors.card, borderRadius: 20,
-    padding: 24, borderWidth: 1, borderColor: Colors.border,
-    alignItems: 'center', gap: 10,
-    shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 30, elevation: 20,
-  },
-  dialogIcone: {
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: Colors.errorLight,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 4,
-  },
-  dialogTitre: { fontSize: 18, fontWeight: '800', color: Colors.white, textAlign: 'center' },
-  dialogSous: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 },
-  dialogBtns: { flexDirection: 'row', gap: 12, marginTop: 8, width: '100%' },
-  dialogBtnAnnuler: {
-    flex: 1, paddingVertical: 14, borderRadius: 12,
-    borderWidth: 1.5, borderColor: Colors.border, alignItems: 'center',
-  },
-  dialogBtnAnnulerTxt: { fontSize: 15, fontWeight: '700', color: Colors.textPrimary },
-  dialogBtnSuppr: {
-    flex: 1, paddingVertical: 14, borderRadius: 12,
-    backgroundColor: Colors.error, alignItems: 'center', justifyContent: 'center',
-    minHeight: 48,
-  },
-  dialogBtnSupprTxt: { fontSize: 15, fontWeight: '800', color: Colors.white },
-
-  // ── Bandeau erreur ──
-  bandeauErreur: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: Colors.errorLight, borderBottomWidth: 1, borderBottomColor: Colors.error,
-    paddingHorizontal: 16, paddingVertical: 10,
-  },
-  bandeauErreurTxt: { flex: 1, color: Colors.error, fontSize: 13 },
-
-  // ── États ──
-  centre: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 12 },
-  chargementTxt: { fontSize: 14, color: Colors.textSecondary, marginTop: 8 },
-  videTitle: { fontSize: 20, fontWeight: '800', color: Colors.white, textAlign: 'center' },
-  videSous: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center' },
-  btnPublier: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: Colors.accent, borderRadius: 14,
-    paddingHorizontal: 24, paddingVertical: 14, marginTop: 8,
-  },
-  btnPublierTxt: { fontSize: 16, fontWeight: '800', color: Colors.white },
-
-  // ── Liste ──
-  liste: { padding: 16, paddingBottom: 40 },
-  compteLabel: {
-    fontSize: 12, color: Colors.textSecondary, marginBottom: 14,
-    fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1,
+  headerTitre:   { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '800', color: Colors.white },
+  headerAjouter: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: Colors.accent, alignItems: 'center', justifyContent: 'center',
   },
 
-  // ── Carte ──
+  statsRow: {
+    flexDirection: 'row', backgroundColor: Colors.card,
+    marginHorizontal: 16, marginTop: 14, borderRadius: 14,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  statItem:   { flex: 1, alignItems: 'center', paddingVertical: 14, gap: 3 },
+  statBorder: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: Colors.border },
+  statVal:    { fontSize: 20, fontWeight: '900', color: Colors.white },
+  statLabel:  { fontSize: 11, color: Colors.textSecondary },
+
+  liste: { padding: 16, paddingBottom: 100, gap: 12 },
+
   carte: {
-    backgroundColor: Colors.card, borderRadius: 16, marginBottom: 14,
+    flexDirection: 'row', gap: 14,
+    backgroundColor: Colors.card, borderRadius: 16,
     borderWidth: 1, borderColor: Colors.border, overflow: 'hidden',
   },
-  photoBox: { position: 'relative', height: 180 },
-  photo: { width: '100%', height: '100%' },
-  badge: {
-    position: 'absolute', top: 10, right: 10,
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    borderRadius: 50, paddingHorizontal: 10, paddingVertical: 5,
-  },
-  badgeDot: { width: 7, height: 7, borderRadius: 4 },
-  badgeTxt: { fontSize: 12, fontWeight: '700' },
+  photo: { width: 100, height: 110 },
+  photoVide: { backgroundColor: Colors.glass, alignItems: 'center', justifyContent: 'center' },
 
-  infos: { padding: 14 },
-  infosTop: {
-    flexDirection: 'row', alignItems: 'flex-start',
-    justifyContent: 'space-between', marginBottom: 6,
-  },
-  nom: { fontSize: 16, fontWeight: '800', color: Colors.white, flex: 1 },
-  prix: { fontSize: 18, fontWeight: '900', color: Colors.accent },
-  prixUnit: { fontSize: 12, fontWeight: '500', color: Colors.textSecondary },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 10 },
-  meta: { fontSize: 13, color: Colors.textSecondary },
-  sep: { color: Colors.textLight, marginHorizontal: 2 },
+  carteInfo: { flex: 1, paddingVertical: 12, paddingRight: 14, justifyContent: 'space-between' },
+  carteTitre:{ fontSize: 15, fontWeight: '800', color: Colors.white },
+  carteSous: { fontSize: 13, color: Colors.textSecondary },
+  cartePrix: { fontSize: 16, fontWeight: '900', color: Colors.accent },
+  parJour:   { fontSize: 12, fontWeight: '400', color: Colors.textSecondary },
 
-  actionsRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  note: { fontSize: 13, fontWeight: '700', color: Colors.white },
-  avis: { fontSize: 12, color: Colors.textSecondary },
-
-  btnModif: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: 'rgba(232,119,34,0.12)', borderRadius: 8,
-    paddingHorizontal: 12, paddingVertical: 7,
-    borderWidth: 1, borderColor: 'rgba(232,119,34,0.3)',
+  carteActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  dispoRow:     { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dispoTxt:     { fontSize: 12, color: Colors.textSecondary },
+  btnSupprimer: {
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: Colors.errorLight, alignItems: 'center', justifyContent: 'center',
   },
-  btnModifTxt: { fontSize: 13, fontWeight: '700', color: Colors.accent },
 
-  btnSuppr: {
-    width: 34, height: 34, borderRadius: 8,
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: Colors.errorLight,
-    borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)',
-    marginLeft: 6,
-  },
+  vide:       { alignItems: 'center', paddingTop: 60, gap: 12, paddingHorizontal: 32 },
+  videT:      { fontSize: 17, fontWeight: '800', color: Colors.white },
+  videS:      { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 },
+  videBtn:    { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Colors.accent, borderRadius: 12, paddingHorizontal: 20, paddingVertical: 12, marginTop: 8 },
+  videBtnTxt: { fontSize: 14, fontWeight: '700', color: Colors.white },
 });

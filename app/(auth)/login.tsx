@@ -6,7 +6,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../src/config/colors';
-import { connecter, reinitialiserMotDePasse, getProfilUtilisateur } from '../../src/services/auth.service';
+import { connecter, reinitialiserMotDePasse, traduireErreurAuth } from '../../src/services/auth.service';
 import { useAuthStore } from '../../src/store/useAuthStore';
 
 const { width } = Dimensions.get('window');
@@ -35,18 +35,11 @@ export default function LoginScreen() {
     if (!valider()) return;
     setLoading(true);
     try {
-      const user = await connecter(email.trim(), mdp);
-      const profil = await getProfilUtilisateur(user.uid);
+      const profil = await connecter(email.trim(), mdp);
       setUtilisateur(profil);
       router.replace('/(tabs)');
     } catch (err: any) {
-      let msg = 'Erreur de connexion';
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        msg = 'Email ou mot de passe incorrect';
-      } else if (err.code === 'auth/too-many-requests') {
-        msg = 'Trop de tentatives. Réessaie dans quelques minutes.';
-      }
-      Alert.alert('Connexion impossible', msg);
+      Alert.alert('Connexion impossible', traduireErreurAuth(err, 'Erreur de connexion'));
     } finally {
       setLoading(false);
     }

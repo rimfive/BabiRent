@@ -76,9 +76,13 @@ export default function DetailVehiculeScreen() {
   useEffect(() => {
     if (!id) return;
     getVehicule(id)
-      .then(v => { setVehicule(v); return v; })
-      .then(v => getProfilUtilisateur(v.proprietaireId))
-      .then(setProprietaire)
+      .then((v) => {
+        if (!v) return null;
+        setVehicule(v);
+        return v;
+      })
+      .then((v) => (v ? getProfilUtilisateur(v.proprietaireId) : null))
+      .then((p) => p && setProprietaire(p))
       .catch(() => {})
       .finally(() => setChargement(false));
   }, [id]);
@@ -118,12 +122,25 @@ export default function DetailVehiculeScreen() {
     router.push(`/reservation/${vehicule.id}?type=vehicule` as any);
   };
 
-  const contacter = () => {
+  const contacter = async () => {
     if (!utilisateur) {
       Alert.alert('Connexion requise', 'Connecte-toi pour envoyer un message.');
       return;
     }
-    router.push('/(tabs)/chat');
+    if (!vehicule) return;
+    try {
+      const { getOuCreerConversation } = await import('../../src/services/chat.service');
+      const convId = await getOuCreerConversation(
+        utilisateur.id,
+        vehicule.proprietaireId,
+        vehicule.id,
+        'vehicule',
+        `🚗 ${vehicule.marque} ${vehicule.modele}`,
+      );
+      router.push(`/chat/${convId}?titre=${encodeURIComponent(`🚗 ${vehicule.marque} ${vehicule.modele}`)}`  as any);
+    } catch (e) {
+      Alert.alert('Erreur', 'Impossible d\'ouvrir le chat. Réessaie.');
+    }
   };
 
   // Description courte / longue

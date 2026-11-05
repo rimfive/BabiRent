@@ -25,7 +25,7 @@ export default function OTPScreen() {
 
   // ── 6 cases OTP ─────────────────────────────────────────────────────────
   const [code, setCode] = useState(['', '', '', '', '', '']);
-  const refs = useRef<(TextInput | null)[]>([]);
+  const refs = useRef<(React.ComponentRef<typeof TextInput> | null)[]>([]);
 
   // ── Minuterie ────────────────────────────────────────────────────────────
   const [secondes, setSecondes] = useState(DUREE_MINUTERIE);

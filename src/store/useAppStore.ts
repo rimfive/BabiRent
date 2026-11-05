@@ -1,22 +1,20 @@
 import { create } from 'zustand';
-import { SectionType, Vehicule, Logement } from '../types';
+import { SectionType, Vehicule, Logement, Article } from '../types';
 
 type AppStore = {
-  // Section active (véhicules ou logements)
   section: SectionType;
   setSection: (s: SectionType) => void;
 
-  // Ville sélectionnée
   villeSelectionnee: string;
   setVille: (v: string) => void;
 
-  // Cache des annonces
   vehicules: Vehicule[];
   logements: Logement[];
+  articles: Article[];
   setVehicules: (v: Vehicule[]) => void;
   setLogements: (l: Logement[]) => void;
+  setArticles: (a: Article[]) => void;
 
-  // Recherche
   termeRecherche: string;
   setTermeRecherche: (t: string) => void;
 };
@@ -30,8 +28,10 @@ export const useAppStore = create<AppStore>((set) => ({
 
   vehicules: [],
   logements: [],
+  articles: [],
   setVehicules: (v) => set({ vehicules: v }),
   setLogements: (l) => set({ logements: l }),
+  setArticles: (a) => set({ articles: a }),
 
   termeRecherche: '',
   setTermeRecherche: (t) => set({ termeRecherche: t }),

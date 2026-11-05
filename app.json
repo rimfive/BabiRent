@@ -17,13 +17,27 @@
       "expo-router",
       "expo-font",
       [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#0D1729",
+          "sounds": []
+        }
+      ],
+      [
         "expo-image-picker",
-        { "photosPermission": "Autoriser BABI RENT à accéder à tes photos." }
+        {
+          "photosPermission": "Autoriser BABI RENT à accéder à tes photos."
+        }
       ],
       [
         "expo-location",
-        { "locationWhenInUsePermission": "Autoriser BABI RENT à utiliser ta position pour trouver les offres près de toi." }
-      ]
+        {
+          "locationWhenInUsePermission": "Autoriser BABI RENT à utiliser ta position pour trouver les offres près de toi."
+        }
+      ],
+      "expo-image",
+      "expo-status-bar"
     ],
     "ios": {
       "supportsTablet": true,

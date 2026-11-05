@@ -1,7 +1,14 @@
-import { Tabs } from 'expo-router';
+import { Tabs, router } from 'expo-router';
 import { View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../src/config/colors';
+import { useAppStore } from '../../src/store/useAppStore';
+
+const ROUTES_PUBLIER = {
+  vehicules:   '/vehicule/publier',
+  logements:   '/logement/publier',
+  marketplace: '/article/publier',
+} as const;
 
 function BoutonCentre() {
   return (
@@ -28,9 +35,9 @@ export default function TabsLayout() {
           title: 'Explorer',
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
-              name={focused ? 'car-sport' : 'car-sport-outline'}
-              size={24}
-              color={color}
+              name={focused ? 'sunny' : 'sunny-outline'}
+              size={26}
+              color={color as string}
             />
           ),
         }}
@@ -43,13 +50,22 @@ export default function TabsLayout() {
             <Ionicons
               name={focused ? 'heart' : 'heart-outline'}
               size={24}
-              color={color}
+              color={color as string}
             />
           ),
         }}
       />
       <Tabs.Screen
         name="publier"
+        // Le bouton "+" ouvre directement le bon formulaire (par-dessus les tabs)
+        // selon la section active, à chaque appui.
+        listeners={{
+          tabPress: (e) => {
+            e.preventDefault();
+            const section = useAppStore.getState().section;
+            router.push(ROUTES_PUBLIER[section] as any);
+          },
+        }}
         options={{
           title: '',
           tabBarIcon: () => <BoutonCentre />,
@@ -64,7 +80,7 @@ export default function TabsLayout() {
             <Ionicons
               name={focused ? 'chatbubbles' : 'chatbubbles-outline'}
               size={24}
-              color={color}
+              color={color as string}
             />
           ),
         }}
@@ -77,7 +93,7 @@ export default function TabsLayout() {
             <Ionicons
               name={focused ? 'person' : 'person-outline'}
               size={24}
-              color={color}
+              color={color as string}
             />
           ),
         }}

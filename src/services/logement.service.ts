@@ -1,80 +1,157 @@
-import {
-  collection, doc, addDoc, updateDoc, deleteDoc,
-  getDocs, getDoc, query, where, limit,
-  serverTimestamp, DocumentData,
-} from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { supabase } from '../config/supabase';
 import { Logement, FiltresLogement } from '../types';
 
-const COL = 'logements';
+// ── Convertir ligne DB → TypeScript ──────────────────────────────────────────
+const dbToLogement = (row: any): Logement => ({
+  id:                 row.id,
+  proprietaireId:     row.proprietaire_id,
+  type:               row.type,
+  titre:              row.titre,
+  photos:             row.photos ?? [],
+  prixJour:           row.prix_jour,
+  prixMois:           row.prix_mois,
+  caution:            row.caution ?? 0,
+  ville:              row.ville,
+  pays:               row.pays ?? "Côte d'Ivoire",
+  adresse:            row.adresse ?? '',
+  latitude:           row.latitude,
+  longitude:          row.longitude,
+  disponible:         row.disponible ?? true,
+  nombreChambres:     row.nombre_chambres ?? 1,
+  nombreSDB:          row.nombre_sdb ?? 1,
+  superficie:         row.superficie ?? 0,
+  capacitePersonnes:  row.capacite_personnes ?? 2,
+  description:        row.description ?? '',
+  equipements:        row.equipements ?? [],
+  note:               row.note ?? 0,
+  nombreAvis:         row.nombre_avis ?? 0,
+  meuble:             row.meuble ?? true,
+  createdAt:          row.created_at ?? new Date().toISOString(),
+});
 
-const toLogement = (id: string, data: DocumentData): Logement => ({
-  id,
-  ...data,
-  createdAt: data.createdAt?.toDate?.()?.toISOString() ?? new Date().toISOString(),
-} as Logement);
+// ── Convertir TypeScript → DB ─────────────────────────────────────────────────
+const logementToDb = (data: Omit<Logement, 'id' | 'createdAt' | 'note' | 'nombreAvis'>) => ({
+  proprietaire_id:    data.proprietaireId,
+  type:               data.type,
+  titre:              data.titre,
+  photos:             data.photos,
+  prix_jour:          data.prixJour,
+  prix_mois:          data.prixMois,
+  caution:            data.caution,
+  ville:              data.ville,
+  pays:               data.pays,
+  adresse:            data.adresse,
+  latitude:           data.latitude,
+  longitude:          data.longitude,
+  disponible:         data.disponible,
+  nombre_chambres:    data.nombreChambres,
+  nombre_sdb:         data.nombreSDB,
+  superficie:         data.superficie,
+  capacite_personnes: data.capacitePersonnes,
+  description:        data.description,
+  equipements:        data.equipements,
+  meuble:             data.meuble,
+});
 
-// Créer une annonce logement
+// ── Créer une annonce logement ────────────────────────────────────────────────
 export const creerLogement = async (
   data: Omit<Logement, 'id' | 'createdAt' | 'note' | 'nombreAvis'>,
 ): Promise<string> => {
-  const ref = await addDoc(collection(db, COL), {
-    ...data,
-    note: 0,
-    nombreAvis: 0,
-    createdAt: serverTimestamp(),
-  });
-  return ref.id;
+  const { data: result, error } = await supabase
+    .from('logements')
+    .insert({ ...logementToDb(data), note: 0, nombre_avis: 0 })
+    .select('id')
+    .single();
+
+  if (error) throw new Error(error.message);
+  return result.id;
 };
 
-// Tous les logements disponibles (tri côté app pour éviter les index composites)
+// ── Tous les logements disponibles ────────────────────────────────────────────
 export const getLogements = async (filtres?: FiltresLogement): Promise<Logement[]> => {
-  let q = query(collection(db, COL), where('disponible', '==', true), limit(50));
+  let query = supabase
+    .from('logements')
+    .select('*')
+    .eq('disponible', true)
+    .order('created_at', { ascending: false })
+    .limit(50);
 
-  if (filtres?.ville) {
-    q = query(collection(db, COL), where('disponible', '==', true), where('ville', '==', filtres.ville), limit(50));
-  }
+  if (filtres?.ville) query = query.eq('ville', filtres.ville);
 
-  const snap = await getDocs(q);
-  return snap.docs
-    .map(d => toLogement(d.id, d.data()))
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return (data ?? []).map(dbToLogement);
 };
 
-// Un logement par ID
+// ── Un logement par ID ────────────────────────────────────────────────────────
 export const getLogement = async (id: string): Promise<Logement | null> => {
-  const snap = await getDoc(doc(db, COL, id));
-  if (!snap.exists()) return null;
-  return toLogement(snap.id, snap.data());
+  const { data, error } = await supabase
+    .from('logements')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error || !data) return null;
+  return dbToLogement(data);
 };
 
-// Logements d'un propriétaire (tri côté app)
+// ── Logements d'un propriétaire ───────────────────────────────────────────────
 export const getLogementsProprietaire = async (uid: string): Promise<Logement[]> => {
-  const q = query(collection(db, COL), where('proprietaireId', '==', uid));
-  const snap = await getDocs(q);
-  return snap.docs
-    .map(d => toLogement(d.id, d.data()))
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const { data, error } = await supabase
+    .from('logements')
+    .select('*')
+    .eq('proprietaire_id', uid)
+    .order('created_at', { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return (data ?? []).map(dbToLogement);
 };
 
-// Mettre à jour
-export const mettreAJourLogement = async (id: string, data: Partial<Logement>): Promise<void> => {
-  await updateDoc(doc(db, COL, id), data);
+// ── Mettre à jour ─────────────────────────────────────────────────────────────
+export const mettreAJourLogement = async (
+  id: string,
+  data: Partial<Logement>,
+): Promise<void> => {
+  const dbData: Record<string, any> = {};
+  if (data.titre             !== undefined) dbData.titre              = data.titre;
+  if (data.type              !== undefined) dbData.type               = data.type;
+  if (data.photos            !== undefined) dbData.photos             = data.photos;
+  if (data.prixJour          !== undefined) dbData.prix_jour          = data.prixJour;
+  if (data.prixMois          !== undefined) dbData.prix_mois          = data.prixMois;
+  if (data.caution           !== undefined) dbData.caution            = data.caution;
+  if (data.ville             !== undefined) dbData.ville              = data.ville;
+  if (data.adresse           !== undefined) dbData.adresse            = data.adresse;
+  if (data.disponible        !== undefined) dbData.disponible         = data.disponible;
+  if (data.nombreChambres    !== undefined) dbData.nombre_chambres    = data.nombreChambres;
+  if (data.nombreSDB         !== undefined) dbData.nombre_sdb         = data.nombreSDB;
+  if (data.superficie        !== undefined) dbData.superficie         = data.superficie;
+  if (data.capacitePersonnes !== undefined) dbData.capacite_personnes = data.capacitePersonnes;
+  if (data.description       !== undefined) dbData.description        = data.description;
+  if (data.equipements       !== undefined) dbData.equipements        = data.equipements;
+  if (data.meuble            !== undefined) dbData.meuble             = data.meuble;
+
+  const { error } = await supabase.from('logements').update(dbData).eq('id', id);
+  if (error) throw new Error(error.message);
 };
 
-// Supprimer
+// ── Supprimer ─────────────────────────────────────────────────────────────────
 export const supprimerLogement = async (id: string): Promise<void> => {
-  await deleteDoc(doc(db, COL, id));
+  const { error } = await supabase.from('logements').delete().eq('id', id);
+  if (error) throw new Error(error.message);
 };
 
-// Recherche
+// ── Recherche ─────────────────────────────────────────────────────────────────
 export const rechercherLogements = async (terme: string): Promise<Logement[]> => {
-  const snap = await getDocs(
-    query(collection(db, COL), where('disponible', '==', true), limit(100)),
-  );
   const termeLower = terme.toLowerCase();
-  return snap.docs
-    .map(d => toLogement(d.id, d.data()))
+  const { data, error } = await supabase
+    .from('logements')
+    .select('*')
+    .eq('disponible', true)
+    .limit(100);
+
+  if (error) throw new Error(error.message);
+  return (data ?? [])
+    .map(dbToLogement)
     .filter(l =>
       l.titre.toLowerCase().includes(termeLower) ||
       l.type.toLowerCase().includes(termeLower) ||

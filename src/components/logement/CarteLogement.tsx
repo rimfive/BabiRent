@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, Pressable, Image, Dimensions,
+  View, Text, StyleSheet, Pressable, Image, Dimensions, TouchableOpacity,
 } from 'react-native';
 
 const PLACEHOLDER_L = 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=600';
@@ -14,16 +14,18 @@ import { useRouter } from 'expo-router';
 import { Colors } from '../../config/colors';
 import { Logement } from '../../types';
 import { formatPrix, formatNote } from '../../utils/formatters';
+import { useFavorisStore } from '../../store/useFavorisStore';
 
 const { width } = Dimensions.get('window');
-const CARD_W = (width - 16 * 2 - 12) / 2; // 2 colonnes avec gaps
+const CARD_W = (width - 16 * 2 - 12) / 2;
 
-type Props = { logement: Logement };
+type Props = { logement: Logement; premier?: boolean };
 
-const CarteLogement = ({ logement }: Props) => {
+const CarteLogement = ({ logement, premier = false }: Props) => {
   const router = useRouter();
   const superHote = logement.note >= 4.8;
   const [photoUri, setPhotoUri] = useState(uriValide(logement.photos?.[0]));
+  const { estFavori, toggle } = useFavorisStore();
 
   return (
     <Pressable
@@ -41,12 +43,25 @@ const CarteLogement = ({ logement }: Props) => {
         <View style={styles.gradientOverlay} />
         <View style={styles.overlay}>
           {/* Haut : badge super hôte si éligible */}
-          {superHote && (
-            <View style={styles.badgeSuperHote}>
-              <Ionicons name="trophy" size={11} color={Colors.accent} />
-              <Text style={styles.txtSuperHote}>Super Hôte</Text>
-            </View>
-          )}
+          <View style={styles.hautRow}>
+            {(superHote || premier) && (
+              <View style={styles.badgeSuperHote}>
+                <Ionicons name="trophy" size={11} color={Colors.accent} />
+                <Text style={styles.txtSuperHote}>{premier ? 'Coup de cœur' : 'Super Hôte'}</Text>
+              </View>
+            )}
+            <TouchableOpacity
+              style={[styles.btnCoeur, estFavori(logement.id) && styles.btnCoeurActif]}
+              onPress={e => { e.stopPropagation?.(); toggle(logement.id); }}
+              hitSlop={8}
+            >
+              <Ionicons
+                name={estFavori(logement.id) ? 'heart' : 'heart-outline'}
+                size={14}
+                color={estFavori(logement.id) ? Colors.error : Colors.white}
+              />
+            </TouchableOpacity>
+          </View>
 
           {/* Milieu : chambres / SDB */}
           <View style={styles.milieu}>
@@ -97,6 +112,11 @@ const styles = StyleSheet.create({
     padding: 10,
     justifyContent: 'space-between',
   },
+  hautRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
   badgeSuperHote: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -110,6 +130,16 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(232,119,34,0.35)',
   },
   txtSuperHote: { fontSize: 10, color: Colors.white, fontWeight: '700' },
+  btnCoeur: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: 'rgba(14,26,46,0.65)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  btnCoeurActif: {
+    backgroundColor: 'rgba(239,68,68,0.15)',
+    borderColor: Colors.error,
+  },
   milieu: { flex: 1, justifyContent: 'flex-end', marginBottom: 4 },
   txChambres: {
     fontSize: 11,

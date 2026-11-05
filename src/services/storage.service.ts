@@ -1,45 +1,64 @@
-import { ref, uploadBytes, uploadString, getDownloadURL } from 'firebase/storage';
-import { storage } from '../config/firebase';
+import { Platform } from 'react-native';
+import { supabase } from '../config/supabase';
 
-export const uploaderImage = async (uri: string, chemin: string): Promise<string> => {
-  const storageRef = ref(storage, chemin);
+// ── Upload une seule image vers Supabase Storage ──────────────────────────────
+// bucket  : 'vehicules' | 'logements' | 'profiles'
+// chemin  : ex. "proprietaireId/timestamp_0"
+export const uploaderImage = async (
+  uri: string,
+  chemin: string,
+  bucket: string,
+): Promise<string> => {
+  let blob: Blob;
 
-  // Sur web, expo-image-picker renvoie une URL blob: ou data:
-  if (uri.startsWith('data:')) {
-    // URI base64 → upload direct comme string
-    const base64 = uri.split(',')[1];
-    const contentType = uri.split(';')[0].split(':')[1] ?? 'image/jpeg';
-    await uploadString(storageRef, base64, 'base64', { contentType });
+  if (Platform.OS === 'web') {
+    // Sur web, l'URI est soit une data URL soit un blob URL
+    if (uri.startsWith('data:')) {
+      const res = await fetch(uri);
+      blob = await res.blob();
+    } else {
+      blob = await (await fetch(uri)).blob();
+    }
   } else {
-    // URI blob: ou file: → fetch puis blob
-    const response = await fetch(uri);
-    if (!response.ok) {
-      throw new Error(`Impossible de lire l'image (status ${response.status})`);
-    }
-    const blob = await response.blob();
-    if (blob.size === 0) {
-      throw new Error('Image vide — réessaie de sélectionner la photo');
-    }
-    await uploadBytes(storageRef, blob, { contentType: blob.type || 'image/jpeg' });
+    // Sur mobile, l'URI est un chemin local (file://)
+    blob = await new Promise<Blob>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.onload = () => resolve(xhr.response as Blob);
+      xhr.onerror = () => reject(new Error('Erreur lecture image'));
+      xhr.responseType = 'blob';
+      xhr.open('GET', uri, true);
+      xhr.send(null);
+    });
   }
 
-  const url = await getDownloadURL(storageRef);
-  return url;
+  // Upload vers Supabase Storage
+  const { error } = await supabase.storage
+    .from(bucket)
+    .upload(chemin, blob, {
+      contentType: 'image/jpeg',
+      upsert: true,        // remplace si le fichier existe déjà
+    });
+
+  if (error) throw new Error(`Upload échoué : ${error.message}`);
+
+  // Récupérer l'URL publique
+  const { data } = supabase.storage.from(bucket).getPublicUrl(chemin);
+  return data.publicUrl;
 };
 
+// ── Upload plusieurs photos en séquence ──────────────────────────────────────
 export const uploaderPhotos = async (
   uris: string[],
-  dossier: string,
+  dossier: string,           // 'vehicules' ou 'logements'
   proprietaireId: string,
 ): Promise<string[]> => {
   const timestamp = Date.now();
+  const bucket = dossier;   // le nom du bucket correspond au dossier
   const urls: string[] = [];
 
   for (let i = 0; i < uris.length; i++) {
-    const url = await uploaderImage(
-      uris[i],
-      `${dossier}/${proprietaireId}/${timestamp}_${i}`,
-    );
+    const chemin = `${proprietaireId}/${timestamp}_${i}`;
+    const url = await uploaderImage(uris[i], chemin, bucket);
     urls.push(url);
   }
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, Pressable, Image, Dimensions,
+  View, Text, StyleSheet, Pressable, Image, Dimensions, TouchableOpacity,
 } from 'react-native';
 
 const PLACEHOLDER_V = 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=800';
@@ -14,14 +14,16 @@ import { useRouter } from 'expo-router';
 import { Colors } from '../../config/colors';
 import { Vehicule } from '../../types';
 import { formatPrix, formatNote } from '../../utils/formatters';
+import { useFavorisStore } from '../../store/useFavorisStore';
 
 const { width } = Dimensions.get('window');
 
-type Props = { vehicule: Vehicule };
+type Props = { vehicule: Vehicule; premier?: boolean };
 
-const CarteVehicule = ({ vehicule }: Props) => {
+const CarteVehicule = ({ vehicule, premier = false }: Props) => {
   const router = useRouter();
   const [photoUri, setPhotoUri] = useState(uriValide(vehicule.photos?.[0]));
+  const { estFavori, toggle } = useFavorisStore();
 
   return (
     <Pressable
@@ -41,14 +43,20 @@ const CarteVehicule = ({ vehicule }: Props) => {
           {/* Haut : badge hôte certifié */}
           <View style={styles.haut}>
             <View style={styles.badgeCertifie}>
-              <Ionicons name="shield-checkmark" size={13} color={Colors.accent} />
-              <Text style={styles.txtBadge}>Hôte Certifié</Text>
+              <Ionicons name={premier ? 'trophy' : 'shield-checkmark'} size={13} color={Colors.accent} />
+              <Text style={styles.txtBadge}>{premier ? 'Coup de cœur' : 'Hôte Certifié'}</Text>
             </View>
-            {!vehicule.disponible && (
-              <View style={styles.badgeIndispo}>
-                <Text style={styles.txtIndispo}>Indisponible</Text>
-              </View>
-            )}
+            <TouchableOpacity
+              style={[styles.btnCoeur, estFavori(vehicule.id) && styles.btnCoeurActif]}
+              onPress={e => { e.stopPropagation?.(); toggle(vehicule.id); }}
+              hitSlop={8}
+            >
+              <Ionicons
+                name={estFavori(vehicule.id) ? 'heart' : 'heart-outline'}
+                size={18}
+                color={estFavori(vehicule.id) ? Colors.error : Colors.white}
+              />
+            </TouchableOpacity>
           </View>
 
           {/* Bas : prix + étoiles */}
@@ -142,6 +150,17 @@ const styles = StyleSheet.create({
     borderRadius: 50,
   },
   txtIndispo: { fontSize: 12, color: Colors.white, fontWeight: '700' },
+  btnCoeur: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: 'rgba(14,26,46,0.65)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center', justifyContent: 'center',
+    backdropFilter: 'blur(8px)',
+  },
+  btnCoeurActif: {
+    backgroundColor: 'rgba(239,68,68,0.15)',
+    borderColor: Colors.error,
+  },
   bas: {
     flexDirection: 'row',
     justifyContent: 'space-between',

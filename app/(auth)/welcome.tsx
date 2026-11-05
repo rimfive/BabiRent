@@ -13,7 +13,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../src/config/colors';
 import {
-  connecter, inscrire, reinitialiserMotDePasse, getProfilUtilisateur,
+  connecter, inscrire, reinitialiserMotDePasse, traduireErreurAuth,
 } from '../../src/services/auth.service';
 import { useAuthStore } from '../../src/store/useAuthStore';
 
@@ -197,14 +197,11 @@ export default function WelcomeScreen() {
     if (!loginEmail.trim() || !loginMdp) { Alert.alert('Champs manquants'); return; }
     setLoginLoad(true);
     try {
-      const user = await connecter(loginEmail.trim(), loginMdp);
-      const profil = await getProfilUtilisateur(user.uid);
+      const profil = await connecter(loginEmail.trim(), loginMdp);
       setUtilisateur(profil);
       router.replace('/(tabs)');
     } catch (err: any) {
-      let msg = 'Email ou mot de passe incorrect';
-      if (err.code === 'auth/too-many-requests') msg = 'Trop de tentatives. Réessaie plus tard.';
-      Alert.alert('Connexion impossible', msg);
+      Alert.alert('Connexion impossible', traduireErreurAuth(err, 'Email ou mot de passe incorrect.'));
     } finally { setLoginLoad(false); }
   };
 
@@ -223,9 +220,7 @@ export default function WelcomeScreen() {
       setUtilisateur(profil);
       router.replace('/(tabs)');
     } catch (err: any) {
-      let msg = "Erreur d'inscription";
-      if (err.code === 'auth/email-already-in-use') msg = 'Cet email est déjà utilisé.';
-      Alert.alert('Inscription impossible', msg);
+      Alert.alert('Inscription impossible', traduireErreurAuth(err, 'Erreur inconnue'));
     } finally { setRegLoad(false); }
   };
 

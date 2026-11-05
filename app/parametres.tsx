@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Switch, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Switch, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -50,6 +50,7 @@ export default function ParametresScreen() {
   const [notifsPush, setNotifsPush] = useState(true);
   const [notifsEmail, setNotifsEmail] = useState(false);
   const [langue, setLangue] = useState('fr');
+  const [modalLangue, setModalLangue] = useState(false);
 
   useEffect(() => {
     AsyncStorage.getItem('babi_langue').then(v => { if (v) setLangue(v); });
@@ -81,8 +82,19 @@ export default function ParametresScreen() {
     );
   };
 
-  const LANGUES: Record<string, string> = {
-    fr: 'Français', en: 'English', ar: 'العربية', wo: 'Wolof', dj: 'Dioula',
+  const LANGUES: { code: string; label: string; drapeau: string }[] = [
+    { code: 'fr', label: 'Français',  drapeau: '🇫🇷' },
+    { code: 'en', label: 'English',   drapeau: '🇬🇧' },
+    { code: 'ar', label: 'العربية',   drapeau: '🇲🇦' },
+    { code: 'wo', label: 'Wolof',     drapeau: '🇸🇳' },
+    { code: 'dj', label: 'Dioula',   drapeau: '🇨🇮' },
+  ];
+  const langueActuelle = LANGUES.find(l => l.code === langue) ?? LANGUES[0];
+
+  const choisirLangue = async (code: string) => {
+    setLangue(code);
+    await AsyncStorage.setItem('babi_langue', code);
+    setModalLangue(false);
   };
 
   return (
@@ -107,8 +119,8 @@ export default function ParametresScreen() {
           <LigneMenu icone="person-outline" label="Modifier mon profil" onPress={() => router.push('/modifier-profil')} />
           <LigneMenu icone="lock-closed-outline" label="Changer le mot de passe"
             onPress={() => Alert.alert('Réinitialisation', 'Un email de réinitialisation sera envoyé à ' + utilisateur?.email)} />
-          <LigneMenu icone="language-outline" label="Langue" valeur={LANGUES[langue] ?? 'Français'}
-            onPress={() => router.push('/(tabs)/profile')} couleur={Colors.info} />
+          <LigneMenu icone="language-outline" label="Langue" valeur={`${langueActuelle.drapeau} ${langueActuelle.label}`}
+            onPress={() => setModalLangue(true)} couleur={Colors.info} />
         </View>
 
         {/* Notifications */}
@@ -139,6 +151,41 @@ export default function ParametresScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Modal sélection langue */}
+      <Modal visible={modalLangue} transparent animationType="slide" onRequestClose={() => setModalLangue(false)}>
+        <Pressable style={styles.modalFond} onPress={() => setModalLangue(false)}>
+          <Pressable style={styles.modalCarte} onPress={e => e.stopPropagation()}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitre}>Choisir la langue</Text>
+
+            {LANGUES.map((l, i) => (
+              <Pressable
+                key={l.code}
+                style={[
+                  styles.langueOption,
+                  i < LANGUES.length - 1 && { borderBottomWidth: 1, borderBottomColor: Colors.border },
+                  l.code === langue && styles.langueActive,
+                ]}
+                onPress={() => choisirLangue(l.code)}
+              >
+                <Text style={styles.langueDrapeau}>{l.drapeau}</Text>
+                <Text style={[styles.langueLabel, l.code === langue && { color: Colors.white, fontWeight: '800' }]}>
+                  {l.label}
+                </Text>
+                {l.code === langue && (
+                  <Ionicons name="checkmark-circle" size={22} color={Colors.accent} />
+                )}
+              </Pressable>
+            ))}
+
+            <Pressable style={styles.modalAnnuler} onPress={() => setModalLangue(false)}>
+              <Text style={styles.modalAnnulerTxt}>Annuler</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -170,4 +217,37 @@ const styles = StyleSheet.create({
   ligneIcone: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   ligneLabel: { flex: 1, fontSize: 15, fontWeight: '500', color: Colors.textPrimary },
   ligneValeur: { fontSize: 13, color: Colors.textSecondary, marginRight: 4 },
+
+  // Modal langue
+  modalFond: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalCarte: {
+    backgroundColor: Colors.card,
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingBottom: 34, paddingHorizontal: 16,
+    borderTopWidth: 1, borderColor: Colors.border,
+  },
+  modalHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: Colors.border, alignSelf: 'center', marginTop: 12, marginBottom: 20,
+  },
+  modalTitre: {
+    fontSize: 18, fontWeight: '800', color: Colors.white,
+    textAlign: 'center', marginBottom: 16,
+  },
+  langueOption: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    paddingVertical: 16, paddingHorizontal: 8, borderRadius: 0,
+  },
+  langueActive: { backgroundColor: 'rgba(232,119,34,0.08)', borderRadius: 12 },
+  langueDrapeau: { fontSize: 26 },
+  langueLabel:   { flex: 1, fontSize: 16, fontWeight: '500', color: Colors.textSecondary },
+  modalAnnuler: {
+    marginTop: 12, paddingVertical: 14, borderRadius: 14,
+    backgroundColor: Colors.glass, alignItems: 'center',
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  modalAnnulerTxt: { fontSize: 15, fontWeight: '700', color: Colors.textSecondary },
 });

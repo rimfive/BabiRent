@@ -13,6 +13,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../src/config/colors';
 import { getVehicule, mettreAJourVehicule } from '../../src/services/vehicule.service';
+import { uploaderPhotos } from '../../src/services/storage.service';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { VILLES, MARQUES_VEHICULE, TYPES_VEHICULE } from '../../src/config/constantes';
 
@@ -107,8 +108,14 @@ export default function ModifierVehiculeScreen() {
   const ajouterPhoto = async () => {
     const r = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'], quality: 0.8, allowsMultipleSelection: true,
+      base64: Platform.OS === 'web',
     });
-    if (!r.canceled) setPhotos(p => [...p, ...r.assets.map(a => a.uri)].slice(0, 8));
+    if (!r.canceled) {
+      const uris = r.assets.map(a =>
+        (Platform.OS === 'web' && a.base64) ? `data:image/jpeg;base64,${a.base64}` : a.uri
+      );
+      setPhotos(p => [...p, ...uris].slice(0, 8));
+    }
   };
 
   const supprimerPhoto = (i: number) => setPhotos(p => p.filter((_, j) => j !== i));
@@ -122,12 +129,21 @@ export default function ModifierVehiculeScreen() {
 
     setSaving(true);
     try {
+      // Upload uniquement les nouvelles photos (pas déjà sur Firebase)
+      const dejaSur = photos.filter(u => u.startsWith('http'));
+      const nouvelles = photos.filter(u => !u.startsWith('http'));
+      let photosFinales = dejaSur;
+      if (nouvelles.length > 0) {
+        const urls = await uploaderPhotos(nouvelles, 'vehicules', utilisateur.id);
+        photosFinales = [...dejaSur, ...urls];
+      }
+
       await mettreAJourVehicule(id as string, {
         marque: form.marque,
         modele: form.modele.trim(),
         annee: parseInt(form.annee) || new Date().getFullYear(),
         type: form.type,
-        photos: photos.length > 0 ? photos : undefined,
+        photos: photosFinales.length > 0 ? photosFinales : undefined,
         prixJour: parseFloat(form.prixJour),
         caution: parseFloat(form.caution) || 0,
         ville: form.ville,

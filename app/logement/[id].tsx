@@ -79,9 +79,13 @@ export default function DetailLogementScreen() {
   useEffect(() => {
     if (!id) return;
     getLogement(id)
-      .then(l => { setLogement(l); return l; })
-      .then(l => getProfilUtilisateur(l.proprietaireId))
-      .then(setProprietaire)
+      .then((l) => {
+        if (!l) return null;
+        setLogement(l);
+        return l;
+      })
+      .then((l) => (l ? getProfilUtilisateur(l.proprietaireId) : null))
+      .then((p) => p && setProprietaire(p))
       .catch(() => {})
       .finally(() => setChargement(false));
   }, [id]);
@@ -119,12 +123,25 @@ export default function DetailLogementScreen() {
     router.push(`/reservation/${logement.id}?type=logement` as any);
   };
 
-  const contacter = () => {
+  const contacter = async () => {
     if (!utilisateur) {
       Alert.alert('Connexion requise', 'Connecte-toi pour envoyer un message.');
       return;
     }
-    router.push('/(tabs)/chat');
+    if (!logement) return;
+    try {
+      const { getOuCreerConversation } = await import('../../src/services/chat.service');
+      const convId = await getOuCreerConversation(
+        utilisateur.id,
+        logement.proprietaireId,
+        logement.id,
+        'logement',
+        `🏠 ${logement.titre}`,
+      );
+      router.push(`/chat/${convId}?titre=${encodeURIComponent(`🏠 ${logement.titre}`)}` as any);
+    } catch (e) {
+      Alert.alert('Erreur', 'Impossible d\'ouvrir le chat. Réessaie.');
+    }
   };
 
   const DESC_MAX = 150;

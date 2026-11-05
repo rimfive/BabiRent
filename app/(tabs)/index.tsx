@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable,
   TextInput, ActivityIndicator, RefreshControl, ScrollView,
-  Dimensions, Modal, Linking, Alert,
+  Dimensions, Modal, Linking, Alert, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +16,7 @@ import { getLogements } from '../../src/services/logement.service';
 import CarteVehicule from '../../src/components/vehicule/CarteVehicule';
 import CarteLogement from '../../src/components/logement/CarteLogement';
 import { Vehicule, Logement, SectionType } from '../../src/types';
+import { useFavorisStore } from '../../src/store/useFavorisStore';
 
 const { width } = Dimensions.get('window');
 
@@ -330,6 +331,8 @@ export default function HomeScreen() {
   const { utilisateur } = useAuthStore();
   const { section, setSection, vehicules, logements, setVehicules, setLogements } = useAppStore();
 
+  const { charger: chargerFavoris } = useFavorisStore();
+
   const [recherche, setRecherche] = useState('');
   const [filtreActif, setFiltreActif] = useState('Tous');
   const [chargement, setChargement] = useState(true);
@@ -353,7 +356,7 @@ export default function HomeScreen() {
     }
   };
 
-  useEffect(() => { charger(); }, []);
+  useEffect(() => { charger(); chargerFavoris(); }, []);
   useEffect(() => { setFiltreActif('Tous'); }, [section]);
 
   const onRafraichir = () => { setRafraichissement(true); charger(true); };
@@ -391,6 +394,140 @@ export default function HomeScreen() {
       );
     }
   };
+
+  // ── En-tête qui défile avec la liste (salutation, offre, recherche, onglets, filtres)
+  // Avant, ce bloc était fixe : sur petit écran / web la liste n'avait plus de place.
+  const enTeteDefilant = (
+    <View>
+          {/* ── Greeting section ── */}
+          <View style={styles.greetingSection}>
+            <View style={styles.greetingEyebrow}>
+              <View style={styles.greetingLine} />
+              <Text style={styles.greetingEyebrowTxt}>
+                {section === 'vehicules' ? 'CONDUISEZ À VOTRE FAÇON'
+                  : section === 'logements' ? 'LOGEZ QUELQUE PART DE SPÉCIAL'
+                  : 'ACHETEZ, VENDEZ, LOUEZ'}
+              </Text>
+            </View>
+            <Text style={styles.greetingTitre}>
+              Bonjour, {utilisateur?.prenom ?? 'vous'}
+              <Text style={styles.greetingPoint}>.</Text>
+            </Text>
+            <Text style={styles.greetingSous}>
+              {section === 'vehicules'
+                ? "Les meilleures voitures, à Abidjan et partout en Côte d'Ivoire."
+                : section === 'logements'
+                ? 'Appartements, villas, studios — courts et longs séjours.'
+                : "Achetez, vendez ou louez des objets près de chez vous."}
+            </Text>
+          </View>
+    
+          <View style={styles.heroCard}>
+            <View style={styles.heroGlow} />
+            <View style={styles.heroHeader}>
+              <View>
+                <Text style={styles.heroLabel}>Offres du jour</Text>
+                <Text style={styles.heroTitle}>Réservez un coup de cœur</Text>
+              </View>
+              <View style={styles.heroBadge}>
+                <Ionicons name="sparkles" size={12} color={Colors.white} />
+                <Text style={styles.heroBadgeText}>Nouveau</Text>
+              </View>
+            </View>
+    
+            <Text style={styles.heroText}>
+              {section === 'vehicules'
+                ? 'Voitures premium, chauffeurs disponibles et locations flexibles toute la semaine.'
+                : section === 'logements'
+                ? 'Séjours design, espaces premium et hébergements au meilleur rapport qualité-prix.'
+                : 'Une marketplace pensée pour acheter, vendre et louer sans complications.'}
+            </Text>
+    
+            <View style={styles.heroActions}>
+              <Pressable
+                style={styles.heroPrimaryButton}
+                onPress={() => setSection(section === 'vehicules' ? 'vehicules' : 'logements')}
+              >
+                <Text style={styles.heroPrimaryText}>Découvrir</Text>
+              </Pressable>
+              <Pressable style={styles.heroSecondaryButton} onPress={() => router.push('/publier' as any)}>
+                <Text style={styles.heroSecondaryText}>Publier</Text>
+              </Pressable>
+            </View>
+          </View>
+    
+          {/* ── Barre de recherche glass ── */}
+          <View style={styles.rechercheWrapper}>
+            <View style={styles.barreRecherche}>
+              <View style={styles.rechercheGauche}>
+                <Pressable onPress={ouvrirCarte} hitSlop={8}>
+                  <Ionicons name="location-outline" size={18} color={Colors.accent} />
+                </Pressable>
+                <TextInput
+                  style={styles.inputRecherche}
+                  placeholder="Localisation"
+                  placeholderTextColor="rgba(255,255,255,0.45)"
+                  value={recherche}
+                  onChangeText={setRecherche}
+                />
+              </View>
+              <View style={styles.dividerV} />
+              <Pressable style={styles.rechercheDroite} onPress={() => setCalendarVisible(true)}>
+                <Ionicons name="calendar-outline" size={18} color={Colors.accent} />
+                <Text style={[styles.txtDates, (dateDebut && dateFin) && styles.txtDatesActif]} numberOfLines={1}>
+                  {dateDebut && dateFin
+                    ? `${fmtDate(dateDebut)} → ${fmtDate(dateFin)}`
+                    : 'Dates'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+    
+          {/* ── Toggle section ── */}
+          <View style={styles.toggleSection}>
+            {([
+              { key: 'vehicules',   label: 'Véhicules', icone: 'car-sport-outline' },
+              { key: 'logements',   label: 'Logements', icone: 'home-outline' },
+              { key: 'marketplace', label: 'Marché',    icone: 'storefront-outline' },
+            ] as { key: SectionType; label: string; icone: any }[]).map(s => (
+              <Pressable
+                key={s.key}
+                style={[styles.toggleBtn, s.key === 'marketplace' ? styles.toggleBtnMarche : (section === s.key && styles.toggleBtnActif)]}
+                onPress={() => s.key === 'marketplace' ? router.push('/marketplace' as any) : changerSection(s.key)}
+              >
+                <Ionicons
+                  name={s.icone}
+                  size={15}
+                  color={s.key === 'marketplace' ? Colors.white : (section === s.key ? Colors.white : 'rgba(255,255,255,0.45)')}
+                />
+                <Text style={[styles.toggleTxt, (s.key === 'marketplace' || section === s.key) && styles.toggleTxtActif]}>
+                  {s.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+    
+          {/* ── Filtres pills ── */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filtresListe}
+            style={styles.filtresScroll}
+          >
+            {filtres.map(f => (
+              <Pressable
+                key={f}
+                style={[styles.filtrePill, filtreActif === f && styles.filtrePillActif]}
+                onPress={() => setFiltreActif(f)}
+              >
+                <Text style={[styles.filtreTxt, filtreActif === f && styles.filtreTxtActif]}>
+                  {f}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.conteneur} edges={['top']}>
@@ -432,119 +569,35 @@ export default function HomeScreen() {
           hitSlop={8}
         >
           <View style={styles.avatar}>
-            <Text style={styles.avatarTxt}>
-              {(utilisateur?.prenom?.[0] ?? 'U').toUpperCase()}
-            </Text>
+            {utilisateur?.photoUrl
+              ? <Image source={{ uri: utilisateur.photoUrl }} style={styles.avatarImg} />
+              : <Text style={styles.avatarTxt}>{(utilisateur?.prenom?.[0] ?? 'U').toUpperCase()}</Text>
+            }
           </View>
         </Pressable>
       </View>
 
-      {/* ── Barre de recherche glass ── */}
-      <View style={styles.rechercheWrapper}>
-        <View style={styles.barreRecherche}>
-          <View style={styles.rechercheGauche}>
-            <Pressable onPress={ouvrirCarte} hitSlop={8}>
-              <Ionicons name="location-outline" size={18} color={Colors.accent} />
-            </Pressable>
-            <TextInput
-              style={styles.inputRecherche}
-              placeholder="Localisation"
-              placeholderTextColor="rgba(255,255,255,0.45)"
-              value={recherche}
-              onChangeText={setRecherche}
-            />
-          </View>
-          <View style={styles.dividerV} />
-          <Pressable style={styles.rechercheDroite} onPress={() => setCalendarVisible(true)}>
-            <Ionicons name="calendar-outline" size={18} color={Colors.accent} />
-            <Text style={[styles.txtDates, (dateDebut && dateFin) && styles.txtDatesActif]} numberOfLines={1}>
-              {dateDebut && dateFin
-                ? `${fmtDate(dateDebut)} → ${fmtDate(dateFin)}`
-                : 'Dates'}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
 
-      {/* ── Toggle section ── */}
-      <View style={styles.toggleSection}>
-        {(['vehicules', 'logements'] as SectionType[]).map(s => (
-          <Pressable
-            key={s}
-            style={[styles.toggleBtn, section === s && styles.toggleBtnActif]}
-            onPress={() => changerSection(s)}
-          >
-            <Ionicons
-              name={s === 'vehicules' ? 'car-sport-outline' : 'home-outline'}
-              size={16}
-              color={section === s ? Colors.white : 'rgba(255,255,255,0.45)'}
-            />
-            <Text style={[styles.toggleTxt, section === s && styles.toggleTxtActif]}>
-              {s === 'vehicules' ? 'Véhicules' : 'Logements'}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {/* ── Filtres pills ── */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filtresListe}
-        style={styles.filtresScroll}
-      >
-        {filtres.map(f => (
-          <Pressable
-            key={f}
-            style={[styles.filtrePill, filtreActif === f && styles.filtrePillActif]}
-            onPress={() => setFiltreActif(f)}
-          >
-            <Text style={[styles.filtreTxt, filtreActif === f && styles.filtreTxtActif]}>
-              {f}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-
-      {/* ── Liste — flex:1 pour ne pas déborder sur les filtres ── */}
-      {chargement ? (
-        <View style={styles.loaderBox}>
-          <ActivityIndicator size="large" color={Colors.accent} />
-        </View>
-      ) : section === 'vehicules' ? (
-        <FlatList
-          key="vehicules"
-          style={styles.flatlist}
-          data={vehiculesFiltres}
-          keyExtractor={v => v.id}
-          renderItem={({ item }) => <CarteVehicule vehicule={item} />}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.liste}
-          refreshControl={
-            <RefreshControl
-              refreshing={rafraichissement}
-              onRefresh={onRafraichir}
-              tintColor={Colors.accent}
-            />
-          }
-          ListEmptyComponent={
-            <View style={styles.vide}>
-              <Ionicons name="car-outline" size={52} color={Colors.gray300} />
-              <Text style={styles.txVide}>Aucun véhicule disponible</Text>
-              <Pressable onPress={() => charger()}>
-                <Text style={styles.lienVide}>Actualiser</Text>
-              </Pressable>
-            </View>
-          }
-        />
-      ) : (
+      {/* ── Liste : l'en-tête (salutation, recherche, filtres…) défile avec elle ── */}
+      {section === 'logements' ? (
         <FlatList
           key="logements"
           style={styles.flatlist}
-          data={logementsFiltres}
+          data={chargement ? [] : logementsFiltres}
           keyExtractor={l => l.id}
-          renderItem={({ item }) => <CarteLogement logement={item} />}
+          renderItem={({ item, index }) => <CarteLogement logement={item} premier={index === 0} />}
           numColumns={2}
+          ListHeaderComponent={
+            <>
+              {enTeteDefilant}
+              {!chargement && logementsFiltres.length > 0 && (
+                <View style={styles.tendancesHeader}>
+                  <Text style={styles.tendancesEyebrow}>🔥 SÉLECTIONNÉS POUR VOUS</Text>
+                  <Text style={styles.tendancesTitre}>Logements populaires</Text>
+                </View>
+              )}
+            </>
+          }
           columnWrapperStyle={styles.grille}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.liste}
@@ -556,13 +609,62 @@ export default function HomeScreen() {
             />
           }
           ListEmptyComponent={
-            <View style={styles.vide}>
-              <Ionicons name="home-outline" size={52} color={Colors.gray300} />
-              <Text style={styles.txVide}>Aucun logement disponible</Text>
-              <Pressable onPress={() => charger()}>
-                <Text style={styles.lienVide}>Actualiser</Text>
-              </Pressable>
-            </View>
+            chargement ? (
+              <View style={styles.loaderBox}>
+                <ActivityIndicator size="large" color={Colors.accent} />
+              </View>
+            ) : (
+              <View style={styles.vide}>
+                <Ionicons name="home-outline" size={52} color={Colors.gray300} />
+                <Text style={styles.txVide}>Aucun logement disponible</Text>
+                <Pressable onPress={() => charger()}>
+                  <Text style={styles.lienVide}>Actualiser</Text>
+                </Pressable>
+              </View>
+            )
+          }
+        />
+      ) : (
+        <FlatList
+          key="vehicules"
+          style={styles.flatlist}
+          data={chargement ? [] : vehiculesFiltres}
+          keyExtractor={v => v.id}
+          renderItem={({ item, index }) => <CarteVehicule vehicule={item} premier={index === 0} />}
+          ListHeaderComponent={
+            <>
+              {enTeteDefilant}
+              {!chargement && vehiculesFiltres.length > 0 && (
+                <View style={styles.tendancesHeader}>
+                  <Text style={styles.tendancesEyebrow}>🔥 SÉLECTIONNÉS POUR VOUS</Text>
+                  <Text style={styles.tendancesTitre}>Véhicules populaires</Text>
+                </View>
+              )}
+            </>
+          }
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.liste}
+          refreshControl={
+            <RefreshControl
+              refreshing={rafraichissement}
+              onRefresh={onRafraichir}
+              tintColor={Colors.accent}
+            />
+          }
+          ListEmptyComponent={
+            chargement ? (
+              <View style={styles.loaderBox}>
+                <ActivityIndicator size="large" color={Colors.accent} />
+              </View>
+            ) : (
+              <View style={styles.vide}>
+                <Ionicons name="car-outline" size={52} color={Colors.gray300} />
+                <Text style={styles.txVide}>Aucun véhicule disponible</Text>
+                <Pressable onPress={() => charger()}>
+                  <Text style={styles.lienVide}>Actualiser</Text>
+                </Pressable>
+              </View>
+            )
           }
         />
       )}
@@ -599,8 +701,129 @@ const styles = StyleSheet.create({
     width: 38, height: 38, borderRadius: 19,
     backgroundColor: Colors.accent,
     alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
   },
+  avatarImg: { width: 38, height: 38, borderRadius: 19 },
   avatarTxt: { color: Colors.white, fontWeight: '800', fontSize: 15 },
+
+  // Greeting
+  greetingSection: { paddingHorizontal: 20, paddingBottom: 16 },
+  greetingEyebrow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  greetingLine: { width: 24, height: 1.5, backgroundColor: Colors.accent },
+  greetingEyebrowTxt: {
+    fontSize: 10, fontWeight: '800', color: Colors.accent,
+    letterSpacing: 1.5, textTransform: 'uppercase',
+  },
+  greetingTitre: {
+    fontSize: 28, fontWeight: '900', color: Colors.white,
+    letterSpacing: -0.5, lineHeight: 32, marginBottom: 6,
+  },
+  greetingPoint: { color: Colors.accent },
+  greetingSous: { fontSize: 13, color: Colors.textSecondary, lineHeight: 20 },
+
+  heroCard: {
+    marginHorizontal: 20,
+    marginBottom: 16,
+    padding: 18,
+    borderRadius: 24,
+    backgroundColor: Colors.primaryMid,
+    borderWidth: 1,
+    borderColor: 'rgba(232,119,34,0.28)',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
+  },
+  heroGlow: {
+    position: 'absolute',
+    right: -18,
+    top: -24,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: 'rgba(232,119,34,0.28)',
+  },
+  heroHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  heroLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.accent,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  heroTitle: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: Colors.white,
+    letterSpacing: -0.6,
+    maxWidth: 210,
+  },
+  heroBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  heroBadgeText: {
+    color: Colors.white,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  heroText: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 20,
+    marginBottom: 15,
+  },
+  heroActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  heroPrimaryButton: {
+    flex: 1,
+    backgroundColor: Colors.accent,
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.accent,
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  heroPrimaryText: {
+    color: Colors.white,
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  heroSecondaryButton: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  heroSecondaryText: {
+    color: Colors.white,
+    fontWeight: '700',
+    fontSize: 14,
+  },
 
   // Recherche
   rechercheWrapper: { paddingHorizontal: 20, marginBottom: 16 },
@@ -644,6 +867,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
     shadowColor: Colors.accent, shadowOpacity: 0.4, shadowRadius: 8, elevation: 4,
   },
+  toggleBtnMarche: {
+    backgroundColor: Colors.success,
+    shadowColor: Colors.success, shadowOpacity: 0.4, shadowRadius: 8, elevation: 4,
+  },
   toggleTxt: { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.45)' },
   toggleTxtActif: { color: Colors.white },
 
@@ -682,9 +909,17 @@ const styles = StyleSheet.create({
   },
   menuItemTxt: { fontSize: 15, fontWeight: '600', color: Colors.textPrimary },
 
+  // Tendances header
+  tendancesHeader: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16 },
+  tendancesEyebrow: {
+    fontSize: 10, fontWeight: '800', color: Colors.accent,
+    letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4,
+  },
+  tendancesTitre: { fontSize: 22, fontWeight: '900', color: Colors.white, letterSpacing: -0.3 },
+
   // Liste
   flatlist: { flex: 1 },
-  loaderBox: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  loaderBox: { paddingVertical: 60, alignItems: 'center', justifyContent: 'center' },
   liste: { paddingTop: 4, paddingBottom: 100 },
   grille: { paddingHorizontal: 16, gap: 12 },
   vide: { alignItems: 'center', paddingTop: 60, gap: 14 },

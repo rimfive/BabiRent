@@ -1,57 +1,103 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Alert, Pressable,
+  View, Text, StyleSheet, ScrollView, Alert, Pressable, ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../src/config/firebase';
 import { useAuthStore } from '../../src/store/useAuthStore';
 import { Colors } from '../../src/config/colors';
+import { supabase } from '../../src/config/supabase';
 import Bouton from '../../src/components/ui/Bouton';
 import ChampTexte from '../../src/components/ui/ChampTexte';
+import CalendrierReservation from '../../src/components/ui/CalendrierReservation';
 import { COMMISSION_TAUX } from '../../src/config/constantes';
-import { formatPrix, calculerJours } from '../../src/utils/formatters';
+import { formatPrix, calculerJours, formatDateCourte } from '../../src/utils/formatters';
 
-// Dates par défaut : demain et dans 3 jours
-const demain = () => {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().split('T')[0];
-};
-const dans3jours = () => {
-  const d = new Date();
-  d.setDate(d.getDate() + 4);
-  return d.toISOString().split('T')[0];
-};
+const demain = () => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; };
 
 const METHODES = [
-  { id: 'mobile_money', label: 'Mobile Money', icone: 'phone-portrait-outline' as const, detail: 'Orange Money, MTN, Wave' },
-  { id: 'especes', label: 'Espèces', icone: 'cash-outline' as const, detail: 'Paiement en main propre' },
-  { id: 'carte', label: 'Carte bancaire', icone: 'card-outline' as const, detail: 'Visa, Mastercard' },
+  { id: 'mobile_money', label: 'Mobile Money',   icone: 'phone-portrait-outline' as const, detail: 'Orange Money, MTN, Wave' },
+  { id: 'especes',      label: 'Espèces',         icone: 'cash-outline' as const,           detail: 'Paiement en main propre' },
+  { id: 'carte',        label: 'Carte bancaire',  icone: 'card-outline' as const,           detail: 'Visa, Mastercard' },
 ];
 
+const STATUT_CONFIG: Record<string, { label: string; couleur: string; fond: string }> = {
+  en_attente: { label: 'En attente',  couleur: Colors.warning, fond: Colors.warningLight },
+  confirmee:  { label: 'Confirmée',   couleur: Colors.success, fond: Colors.successLight },
+  en_cours:   { label: 'En cours',    couleur: Colors.info,    fond: Colors.infoLight },
+  annulee:    { label: 'Annulée',     couleur: Colors.error,   fond: Colors.errorLight },
+  terminee:   { label: 'Terminée',    couleur: Colors.info,    fond: Colors.infoLight },
+};
+
 export default function ReservationScreen() {
-  const { id, type } = useLocalSearchParams<{ id: string; type: string }>();
-  const router = useRouter();
+  // id = annonceId (mode création) ou reservationId (mode vue)
+  const { id, type, mode } = useLocalSearchParams<{ id: string; type: string; mode?: string }>();
+  const router  = useRouter();
   const { utilisateur } = useAuthStore();
+  const estVue = mode === 'view';
 
+  // ── Mode vue : afficher une réservation existante ─────────────────────────
+  const [reservationExistante, setReservationExistante] = useState<any>(null);
+  const [chargementVue, setChargementVue] = useState(estVue);
+
+  useEffect(() => {
+    if (!estVue || !id) return;
+    supabase.from('reservations').select('*').eq('id', id).single()
+      .then(({ data }) => { setReservationExistante(data); setChargementVue(false); });
+  }, [estVue, id]);
+
+  // ── Mode création : charger le prix réel depuis l'annonce ─────────────────
+  const [prixJour, setPrixJour] = useState(0);
+  const [chargementPrix, setChargementPrix] = useState(!estVue);
+
+  useEffect(() => {
+    if (estVue || !id || !type) return;
+    const table = type === 'logement' ? 'logements' : 'vehicules';
+    supabase.from(table).select('prix_jour, proprietaire_id').eq('id', id).single()
+      .then(({ data }) => {
+        if (data) setPrixJour(data.prix_jour);
+        setChargementPrix(false);
+      });
+
+    // Charger les dates déjà réservées pour cette annonce
+    // Fonction SQL sécurisée : renvoie uniquement les dates (pas qui a réservé),
+    // car les règles RLS cachent les réservations des autres utilisateurs.
+    supabase
+      .rpc('dates_reservees', { p_annonce_id: id })
+      .then(({ data: resa }) => {
+        if (!resa) return;
+        const bloquees: string[] = [];
+        (resa as { date_debut: string; date_fin: string }[]).forEach(r => {
+          let courant = new Date(r.date_debut);
+          const fin = new Date(r.date_fin);
+          while (courant <= fin) {
+            bloquees.push(courant.toISOString().split('T')[0]);
+            courant.setDate(courant.getDate() + 1);
+          }
+        });
+        setDatesBloquees(bloquees);
+      });
+  }, [estVue, id, type]);
+
+  // ── Formulaire de création ────────────────────────────────────────────────
   const [dateDebut, setDateDebut] = useState(demain());
-  const [dateFin, setDateFin] = useState(dans3jours());
-  const [message, setMessage] = useState('');
-  const [methode, setMethode] = useState<'mobile_money' | 'especes' | 'carte'>('mobile_money');
-  const [loading, setLoading] = useState(false);
+  const [dateFin,   setDateFin]   = useState('');
+  const [datesBloquees, setDatesBloquees] = useState<string[]>([]);
+  const [message,   setMessage]   = useState('');
+  const [methode, setMethode]     = useState<'mobile_money' | 'especes' | 'carte'>('mobile_money');
+  const [loading, setLoading]     = useState(false);
 
-  // Pour demo : prix fixe (en prod, charger depuis Firestore)
-  const prixJour = 25000;
-  const nombreJours = Math.max(1, calculerJours(dateDebut, dateFin));
-  const prixTotal = prixJour * nombreJours;
-  const commission = Math.round(prixTotal * COMMISSION_TAUX);
-  const montantProprietaire = prixTotal - commission;
+  const nombreJours  = dateFin ? Math.max(1, calculerJours(dateDebut, dateFin)) : 0;
+  const prixTotal    = prixJour * nombreJours;
+  const commission   = Math.round(prixTotal * COMMISSION_TAUX);
+  const montantProp  = prixTotal - commission;
 
   const confirmer = async () => {
     if (!utilisateur || !id) return;
-
+    if (!dateFin) {
+      Alert.alert('Dates incomplètes', 'Sélectionne une date de départ sur le calendrier.');
+      return;
+    }
     if (calculerJours(dateDebut, dateFin) < 1) {
       Alert.alert('Dates invalides', 'La date de fin doit être après la date de début.');
       return;
@@ -59,190 +105,269 @@ export default function ReservationScreen() {
 
     setLoading(true);
     try {
-      await addDoc(collection(db, 'reservations'), {
-        type: type || 'vehicule',
-        annonceId: id,
-        loueurId: utilisateur.id,
-        proprietaireId: 'proprietaire_id_placeholder', // à récupérer depuis l'annonce
-        dateDebut,
-        dateFin,
-        nombreJours,
-        prixTotal,
+      // Récupérer le proprietaireId depuis l'annonce
+      const table = type === 'logement' ? 'logements' : 'vehicules';
+      const { data: annonce } = await supabase
+        .from(table).select('proprietaire_id').eq('id', id).single();
+
+      if (!annonce) throw new Error('Annonce introuvable');
+
+      const { error } = await supabase.from('reservations').insert({
+        type,
+        annonce_id:           id,
+        loueur_id:            utilisateur.id,
+        proprietaire_id:      annonce.proprietaire_id,
+        date_debut:           dateDebut,
+        date_fin:             dateFin,
+        nombre_jours:         nombreJours,
+        prix_total:           prixTotal,
         commission,
-        montantProprietaire,
-        statut: 'en_attente',
-        methodePaiement: methode,
-        message: message.trim(),
-        createdAt: serverTimestamp(),
+        montant_proprietaire: montantProp,
+        statut:               'en_attente',
+        methode_paiement:     methode,
+        message,
       });
 
-      Alert.alert(
-        'Demande envoyée !',
-        'Le propriétaire va confirmer ta réservation sous 24h. Tu seras notifié par message.',
-        [{ text: 'Super !', onPress: () => router.replace('/(tabs)') }],
-      );
-    } catch (err) {
-      Alert.alert('Erreur', 'Impossible d\'envoyer la demande. Réessaie.');
+      if (error) throw new Error(error.message);
+      Alert.alert('Réservation envoyée !', 'Le propriétaire va confirmer ta demande.', [
+        { text: 'OK', onPress: () => router.replace('/mes-reservations') },
+      ]);
+    } catch (e: any) {
+      Alert.alert('Erreur', e.message ?? 'Une erreur est survenue.');
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <ScrollView style={styles.conteneur} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-      <Text style={styles.sousTitre}>
-        {type === 'logement' ? '🏠 Réservation logement' : '🚗 Réservation véhicule'}
-      </Text>
+  // ── Rendu mode VUE ────────────────────────────────────────────────────────
+  if (estVue) {
+    if (chargementVue) {
+      return (
+        <View style={styles.loader}>
+          <ActivityIndicator size="large" color={Colors.accent} />
+        </View>
+      );
+    }
+    const r = reservationExistante;
+    const cfg = r ? (STATUT_CONFIG[r.statut] ?? STATUT_CONFIG.en_attente) : null;
+    return (
+      <View style={styles.page}>
+        <View style={styles.header}>
+          <Pressable style={styles.headerBtn} onPress={() => router.canGoBack() ? router.back() : router.replace('/mes-reservations')} hitSlop={16}>
+            <Ionicons name="arrow-back" size={22} color={Colors.white} />
+          </Pressable>
+          <Text style={styles.headerTitre}>Détail réservation</Text>
+          <View style={styles.headerBtn} />
+        </View>
+        {r && cfg && (
+          <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
+            <View style={[styles.statutBadge, { backgroundColor: cfg.fond, alignSelf: 'flex-start' }]}>
+              <Text style={[styles.statutTxt, { color: cfg.couleur }]}>{cfg.label}</Text>
+            </View>
+            <View style={styles.infoCard}>
+              <LigneInfo label="Type"          valeur={r.type === 'logement' ? '🏠 Logement' : '🚗 Véhicule'} />
+              <LigneInfo label="Du"            valeur={formatDateCourte(r.date_debut)} />
+              <LigneInfo label="Au"            valeur={formatDateCourte(r.date_fin)} />
+              <LigneInfo label="Durée"         valeur={`${r.nombre_jours} jour${r.nombre_jours > 1 ? 's' : ''}`} />
+              <LigneInfo label="Paiement"      valeur={r.methode_paiement === 'mobile_money' ? 'Mobile Money' : r.methode_paiement === 'carte' ? 'Carte bancaire' : 'Espèces'} />
+              {r.methode_paiement !== 'especes' && (
+                <LigneInfo
+                  label="Statut paiement"
+                  valeur={
+                    r.statut_paiement === 'paye'   ? '✅ Payé'
+                    : r.statut_paiement === 'echoue' ? '❌ Échoué'
+                    : r.statut_paiement === 'en_cours' ? '⏳ En cours'
+                    : 'Non payé'
+                  }
+                />
+              )}
+              <LigneInfo label="Total"         valeur={formatPrix(r.prix_total)} accent />
+            </View>
+            {r.message ? (
+              <View style={styles.infoCard}>
+                <Text style={styles.msgLabel}>Message au propriétaire</Text>
+                <Text style={styles.msgTxt}>{r.message}</Text>
+              </View>
+            ) : null}
+          </ScrollView>
+        )}
+      </View>
+    );
+  }
 
-      {/* Dates */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitre}>Période de location</Text>
-        <View style={styles.rangee}>
-          <View style={styles.dateChamp}>
-            <Text style={styles.dateLabel}>Date de début</Text>
-            <Pressable style={styles.dateBtn}>
-              <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
-              <Text style={styles.dateBtnTexte}>{dateDebut}</Text>
-            </Pressable>
-          </View>
-          <View style={styles.dateSep}>
-            <Ionicons name="arrow-forward" size={20} color={Colors.gray300} />
-          </View>
-          <View style={styles.dateChamp}>
-            <Text style={styles.dateLabel}>Date de fin</Text>
-            <Pressable style={styles.dateBtn}>
-              <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
-              <Text style={styles.dateBtnTexte}>{dateFin}</Text>
-            </Pressable>
-          </View>
-        </View>
-        <View style={styles.dureeInfo}>
-          <Ionicons name="time-outline" size={16} color={Colors.primary} />
-          <Text style={styles.dureeTexte}>{nombreJours} jour{nombreJours > 1 ? 's' : ''} de location</Text>
-        </View>
+  // ── Rendu mode CRÉATION ───────────────────────────────────────────────────
+  if (chargementPrix) {
+    return (
+      <View style={styles.loader}>
+        <ActivityIndicator size="large" color={Colors.accent} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.page}>
+      <View style={styles.header}>
+        <Pressable style={styles.headerBtn} onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)')} hitSlop={16}>
+          <Ionicons name="arrow-back" size={22} color={Colors.white} />
+        </Pressable>
+        <Text style={styles.headerTitre}>Réserver</Text>
+        <View style={styles.headerBtn} />
       </View>
 
-      {/* Méthode de paiement */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitre}>Méthode de paiement</Text>
+      <ScrollView contentContainerStyle={styles.scroll}>
+
+        {/* Calendrier */}
+        <Text style={styles.sectionTitre}>Dates de séjour</Text>
+
+        {/* Résumé dates sélectionnées */}
+        <View style={styles.resumeDates}>
+          <View style={styles.resumeDate}>
+            <Text style={styles.resumeDateLabel}>Arrivée</Text>
+            <Text style={styles.resumeDateVal}>{dateDebut ? formatDateCourte(dateDebut) : '—'}</Text>
+          </View>
+          <Ionicons name="arrow-forward" size={18} color={Colors.textSecondary} />
+          <View style={styles.resumeDate}>
+            <Text style={styles.resumeDateLabel}>Départ</Text>
+            <Text style={styles.resumeDateVal}>{dateFin ? formatDateCourte(dateFin) : '—'}</Text>
+          </View>
+          {nombreJours > 0 && (
+            <View style={[styles.resumeDate, { alignItems: 'flex-end' }]}>
+              <Text style={styles.resumeDateLabel}>Durée</Text>
+              <Text style={[styles.resumeDateVal, { color: Colors.accent }]}>{nombreJours}j</Text>
+            </View>
+          )}
+        </View>
+
+        <CalendrierReservation
+          dateDebut={dateDebut}
+          dateFin={dateFin}
+          onSelectDebut={setDateDebut}
+          onSelectFin={setDateFin}
+          datesBloquees={datesBloquees}
+        />
+
+        {/* Récapitulatif prix */}
+        <View style={styles.recapCard}>
+          <View style={styles.recapLigne}>
+            <Text style={styles.recapLabel}>
+              {nombreJours > 0
+                ? `${formatPrix(prixJour)} × ${nombreJours} jour${nombreJours > 1 ? 's' : ''}`
+                : 'Sélectionne tes dates'}
+            </Text>
+            <Text style={styles.recapVal}>{nombreJours > 0 ? formatPrix(prixTotal) : '—'}</Text>
+          </View>
+          <View style={styles.recapLigne}>
+            <Text style={styles.recapLabel}>Commission Babi Rent</Text>
+            <Text style={styles.recapVal}>- {formatPrix(commission)}</Text>
+          </View>
+          <View style={[styles.recapLigne, styles.recapTotal]}>
+            <Text style={styles.recapTotalLabel}>Total à payer</Text>
+            <Text style={styles.recapTotalVal}>{formatPrix(prixTotal)}</Text>
+          </View>
+        </View>
+
+        {/* Méthode de paiement */}
+        <Text style={styles.sectionTitre}>Mode de paiement</Text>
         {METHODES.map(m => (
           <Pressable
             key={m.id}
-            style={[styles.methode, methode === m.id && styles.methodeActif]}
-            onPress={() => setMethode(m.id as typeof methode)}
+            style={[styles.methodeLigne, methode === m.id && styles.methodeActive]}
+            onPress={() => setMethode(m.id as any)}
           >
-            <View style={[styles.methodeIcone, methode === m.id && styles.methodeIconeActif]}>
-              <Ionicons name={m.icone} size={22} color={methode === m.id ? Colors.white : Colors.primary} />
-            </View>
-            <View style={styles.methodeInfos}>
-              <Text style={[styles.methodeLabel, methode === m.id && styles.methodeLabelActif]}>{m.label}</Text>
+            <Ionicons name={m.icone} size={22} color={methode === m.id ? Colors.accent : Colors.textSecondary} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.methodeLabel, methode === m.id && { color: Colors.white }]}>{m.label}</Text>
               <Text style={styles.methodeDetail}>{m.detail}</Text>
             </View>
-            <View style={[styles.radio, methode === m.id && styles.radioActif]}>
-              {methode === m.id && <View style={styles.radioInner} />}
-            </View>
+            {methode === m.id && <Ionicons name="checkmark-circle" size={20} color={Colors.accent} />}
           </Pressable>
         ))}
-      </View>
+        {methode !== 'especes' && (
+          <Text style={styles.methodeDetail}>
+            💡 Tu ne paies rien maintenant : le paiement se fera dans « Mes réservations »
+            une fois que le propriétaire aura confirmé.
+          </Text>
+        )}
 
-      {/* Message */}
-      <View style={styles.section}>
+        {/* Message */}
+        <Text style={styles.sectionTitre}>Message (optionnel)</Text>
         <ChampTexte
-          label="Message pour le propriétaire (optionnel)"
+          label=""
           value={message}
           onChangeText={setMessage}
-          placeholder="Présentez-vous, précisez vos besoins..."
+          placeholder="Présente-toi ou pose une question au propriétaire..."
           multiline
           numberOfLines={3}
         />
-      </View>
 
-      {/* Récapitulatif */}
-      <View style={styles.recap}>
-        <Text style={styles.sectionTitre}>Récapitulatif</Text>
-        {[
-          { label: `Prix / jour × ${nombreJours}j`, valeur: formatPrix(prixTotal) },
-          { label: 'Commission BABI RENT (10%)', valeur: `-${formatPrix(commission)}` },
-        ].map((ligne, i) => (
-          <View key={i} style={styles.lignePrix}>
-            <Text style={styles.ligneLabel}>{ligne.label}</Text>
-            <Text style={styles.ligneValeur}>{ligne.valeur}</Text>
-          </View>
-        ))}
-        <View style={styles.separateur} />
-        <View style={styles.lignePrix}>
-          <Text style={styles.totalLabel}>Total à payer</Text>
-          <Text style={styles.totalValeur}>{formatPrix(prixTotal)}</Text>
-        </View>
-        <View style={styles.infoComm}>
-          <Ionicons name="information-circle-outline" size={15} color={Colors.textSecondary} />
-          <Text style={styles.texteComm}>
-            {formatPrix(montantProprietaire)} seront reversés au propriétaire.
-          </Text>
-        </View>
-      </View>
+        <Bouton
+          titre={loading ? 'Envoi en cours...' : 'Confirmer la réservation'}
+          onPress={confirmer}
+          desactive={loading || prixJour === 0 || !dateFin}
+          style={{ marginTop: 8 }}
+        />
 
-      <Bouton titre="Confirmer la réservation" onPress={confirmer} loading={loading} />
-      <View style={{ height: 40 }} />
-    </ScrollView>
+      </ScrollView>
+    </View>
+  );
+}
+
+function LigneInfo({ label, valeur, accent }: { label: string; valeur: string; accent?: boolean }) {
+  return (
+    <View style={styles.ligneInfo}>
+      <Text style={styles.ligneInfoLabel}>{label}</Text>
+      <Text style={[styles.ligneInfoVal, accent && { color: Colors.accent, fontWeight: '900' }]}>{valeur}</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  conteneur: { flex: 1, backgroundColor: Colors.background },
-  scroll: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 40 },
-  sousTitre: { fontSize: 16, color: Colors.textSecondary, marginBottom: 20 },
-  section: { marginBottom: 24 },
-  sectionTitre: { fontSize: 16, fontWeight: '700', color: Colors.textPrimary, marginBottom: 14 },
-  rangee: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  dateChamp: { flex: 1 },
-  dateLabel: { fontSize: 13, color: Colors.textSecondary, marginBottom: 8, fontWeight: '500' },
-  dateBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: Colors.white, borderRadius: 12,
-    padding: 12, borderWidth: 1.5, borderColor: Colors.primary,
+  page:   { flex: 1, backgroundColor: Colors.background },
+  loader: { flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center' },
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 8, paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  dateBtnTexte: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
-  dateSep: { paddingTop: 24 },
-  dureeInfo: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: Colors.primaryLight, borderRadius: 10,
-    padding: 10, marginTop: 12,
+  headerBtn:   { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  headerTitre: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '800', color: Colors.white },
+  scroll: { padding: 20, paddingBottom: 48 },
+
+  sectionTitre: { fontSize: 13, fontWeight: '700', color: Colors.textLight, textTransform: 'uppercase', letterSpacing: 1, marginTop: 20, marginBottom: 10 },
+
+  resumeDates: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: Colors.glass, borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: Colors.border, marginBottom: 12, gap: 8,
   },
-  dureeTexte: { fontSize: 14, color: Colors.primary, fontWeight: '600' },
-  methode: {
+  resumeDate:      { alignItems: 'center', flex: 1 },
+  resumeDateLabel: { fontSize: 11, color: Colors.textSecondary, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
+  resumeDateVal:   { fontSize: 15, fontWeight: '800', color: Colors.white },
+
+  recapCard: { backgroundColor: Colors.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.border, marginBottom: 8 },
+  recapLigne: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  recapLabel: { fontSize: 14, color: Colors.textSecondary },
+  recapVal:   { fontSize: 14, color: Colors.textPrimary, fontWeight: '600' },
+  recapTotal: { borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: 10, marginTop: 4, marginBottom: 0 },
+  recapTotalLabel: { fontSize: 16, fontWeight: '800', color: Colors.white },
+  recapTotalVal:   { fontSize: 18, fontWeight: '900', color: Colors.accent },
+
+  methodeLigne: {
     flexDirection: 'row', alignItems: 'center', gap: 14,
-    backgroundColor: Colors.white, borderRadius: 14, padding: 16,
-    marginBottom: 10, borderWidth: 1.5, borderColor: Colors.border,
+    backgroundColor: Colors.glass, borderRadius: 14, padding: 14, marginBottom: 8,
+    borderWidth: 1.5, borderColor: Colors.border,
   },
-  methodeActif: { borderColor: Colors.primary, backgroundColor: Colors.primaryLight },
-  methodeIcone: {
-    width: 44, height: 44, borderRadius: 12,
-    backgroundColor: Colors.primaryLight, alignItems: 'center', justifyContent: 'center',
-  },
-  methodeIconeActif: { backgroundColor: Colors.primary },
-  methodeInfos: { flex: 1 },
-  methodeLabel: { fontSize: 15, fontWeight: '600', color: Colors.textPrimary },
-  methodeLabelActif: { color: Colors.primary },
-  methodeDetail: { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
-  radio: {
-    width: 20, height: 20, borderRadius: 10,
-    borderWidth: 2, borderColor: Colors.border,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  radioActif: { borderColor: Colors.primary },
-  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.primary },
-  recap: {
-    backgroundColor: Colors.white, borderRadius: 16, padding: 20,
-    marginBottom: 24,
-    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, elevation: 2,
-  },
-  lignePrix: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  ligneLabel: { fontSize: 14, color: Colors.textSecondary },
-  ligneValeur: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
-  separateur: { height: 1, backgroundColor: Colors.border, marginVertical: 12 },
-  totalLabel: { fontSize: 16, fontWeight: '700', color: Colors.textPrimary },
-  totalValeur: { fontSize: 18, fontWeight: '800', color: Colors.primary },
-  infoComm: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 10 },
-  texteComm: { fontSize: 12, color: Colors.textSecondary, flex: 1, lineHeight: 18 },
+  methodeActive: { borderColor: Colors.accent, backgroundColor: 'rgba(232,119,34,0.10)' },
+  methodeLabel:  { fontSize: 15, fontWeight: '700', color: Colors.textSecondary, marginBottom: 2 },
+  methodeDetail: { fontSize: 12, color: Colors.textLight },
+
+  // Mode vue
+  statutBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 50 },
+  statutTxt:   { fontSize: 13, fontWeight: '700' },
+  infoCard:    { backgroundColor: Colors.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.border },
+  ligneInfo:   { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  ligneInfoLabel: { fontSize: 14, color: Colors.textSecondary },
+  ligneInfoVal:   { fontSize: 14, fontWeight: '700', color: Colors.white },
+  msgLabel: { fontSize: 13, color: Colors.textSecondary, marginBottom: 8 },
+  msgTxt:   { fontSize: 15, color: Colors.white, lineHeight: 22 },
 });

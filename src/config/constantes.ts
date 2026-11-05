@@ -76,3 +76,20 @@ export const DUREES_LOCATION = [1, 2, 3, 5, 7, 14, 30];
 // Limites upload photos
 export const MAX_PHOTOS = 8;
 export const TAILLE_MAX_PHOTO_MB = 5;
+
+// Catégories marketplace
+export const CATEGORIES_MARKETPLACE = [
+  'Électronique',
+  'Meubles',
+  'Électroménager',
+  'Vêtements',
+  'Outils & Bricolage',
+  'Sport & Loisirs',
+  'Cuisine',
+  'Vélos & Trottinettes',
+  'Décoration',
+  'Livres & Médias',
+  'Autre',
+];
+
+export const FILTRES_MARKETPLACE = ['Tous', 'Vente', 'Location', 'Électronique', 'Meubles', 'Sport'];
